@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabase, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET() {
   const configured = isSupabaseConfigured();
@@ -15,21 +15,36 @@ export async function GET() {
   const startTime = Date.now();
 
   try {
-    // Testar consulta real na tabela faqs
-    const { data, error, count } = await supabaseAdmin
+    // 1. Tentar com supabaseAdmin
+    let { data, error, count } = await supabaseAdmin
       .from('faqs')
-      .select('*', { count: 'exact', head: true });
+      .select('id', { count: 'exact' })
+      .limit(1);
+
+    // 2. Se falhar, tentar com o cliente público anon (supabase)
+    if (error) {
+      console.warn('[CheckDB] Tentando com cliente anon público...');
+      const anonRes = await supabase
+        .from('faqs')
+        .select('id', { count: 'exact' })
+        .limit(1);
+
+      if (!anonRes.error) {
+        data = anonRes.data;
+        error = null;
+        count = anonRes.count;
+      } else {
+        return NextResponse.json({
+          connected: false,
+          configured: true,
+          error: error.message || JSON.stringify(error),
+          anonError: anonRes.error.message || JSON.stringify(anonRes.error),
+          message: error.message || 'Erro ao consultar tabela faqs no Supabase.',
+        });
+      }
+    }
 
     const latencyMs = Date.now() - startTime;
-
-    if (error) {
-      return NextResponse.json({
-        connected: false,
-        configured: true,
-        error: error.message,
-        message: 'Conectou ao host, mas ocorreu um erro ao consultar as tabelas. Verifique se executou o script schema.sql no SQL Editor do Supabase.',
-      });
-    }
 
     return NextResponse.json({
       connected: true,
@@ -44,7 +59,7 @@ export async function GET() {
       connected: false,
       configured: true,
       error: err.message,
-      message: 'Falha de comunicação com o Supabase.',
+      message: 'Falha de comunicação com o Supabase: ' + err.message,
     });
   }
 }
