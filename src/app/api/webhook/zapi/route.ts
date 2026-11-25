@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
 
     // 6. Carregar Configurações e FAQs do Banco de Dados
     let settings: any = {
-      company_name: 'Minha Empresa',
+      company_name: 'Assessoria CNH',
       ai_tone: 'amigável e rápido',
       response_delay_seconds: 2,
       is_automation_enabled: true,
@@ -126,36 +126,139 @@ export async function POST(req: NextRequest) {
       if (kData) knowledgeBase = kData as KnowledgeItem[];
     }
 
-    // 7. Checar se a automação / robô está ativado ou pausado pelo usuário
-    if (settings.is_automation_enabled === false) {
+    // 7. Persistir Contato, Conversa e Mensagem Recebida no Banco de Dados
+    let contactId: string | null = null;
+    let conversationId: string | null = null;
+    let isContactPaused = false;
+    let conversationHistory: Message[] = [];
+
+    if (isSupabaseConfigured()) {
+      try {
+        // 7.1 Buscar ou criar contato
+        let { data: contact } = await supabaseAdmin
+          .from('contacts')
+          .select('*')
+          .eq('wa_id', senderPhone)
+          .single();
+
+        const cleanName = senderName && senderName !== 'Cliente' && senderName.trim().length > 0 ? senderName.trim() : senderPhone;
+
+        if (!contact) {
+          const { data: newContact } = await supabaseAdmin
+            .from('contacts')
+            .insert({
+              wa_id: senderPhone,
+              name: cleanName,
+              last_interaction_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+          contact = newContact;
+        } else {
+          await supabaseAdmin
+            .from('contacts')
+            .update({
+              name: contact.name && contact.name !== contact.wa_id ? contact.name : cleanName,
+              last_interaction_at: new Date().toISOString(),
+            })
+            .eq('id', contact.id);
+        }
+
+        contactId = contact?.id || null;
+        isContactPaused = Boolean(contact?.is_automation_paused);
+
+        // 7.2 Buscar ou criar conversa
+        if (contactId) {
+          let { data: conv } = await supabaseAdmin
+            .from('conversations')
+            .select('*')
+            .eq('contact_id', contactId)
+            .single();
+
+          if (!conv) {
+            const { data: newConv } = await supabaseAdmin
+              .from('conversations')
+              .insert({
+                contact_id: contactId,
+                status: isContactPaused ? 'paused_human' : 'active',
+                last_message_preview: incomingText.slice(0, 100),
+                last_message_at: new Date().toISOString(),
+                unread_count: 0,
+              })
+              .select()
+              .single();
+            conv = newConv;
+          } else {
+            await supabaseAdmin
+              .from('conversations')
+              .update({
+                last_message_preview: incomingText.slice(0, 100),
+                last_message_at: new Date().toISOString(),
+                status: isContactPaused ? 'paused_human' : conv.status,
+              })
+              .eq('id', conv.id);
+          }
+
+          conversationId = conv?.id || null;
+
+          // 7.3 Registrar mensagem recebida do cliente
+          if (conversationId) {
+            await supabaseAdmin.from('messages').insert({
+              conversation_id: conversationId,
+              sender_type: 'contact',
+              message_type: 'text',
+              content: incomingText,
+              status: 'delivered',
+            });
+
+            // Carregar mensagens anteriores para contexto da IA
+            const { data: historyMsgs } = await supabaseAdmin
+              .from('messages')
+              .select('*')
+              .eq('conversation_id', conversationId)
+              .order('created_at', { ascending: true })
+              .limit(10);
+
+            if (historyMsgs) conversationHistory = historyMsgs as Message[];
+          }
+        }
+      } catch (dbErr) {
+        console.error('[Z-API Webhook] Erro ao sincronizar contato/conversa:', dbErr);
+      }
+    }
+
+    // 8. Checar se a automação está desativada globalmente OU pausada para este contato
+    if (settings.is_automation_enabled === false || isContactPaused) {
       if (isSupabaseConfigured()) {
         try {
           await supabaseAdmin.from('system_logs').insert({
             event_type: 'webhook_received',
             level: 'info',
-            message: 'Mensagem recebida no WhatsApp, mas o robô está DESATIVADO no painel',
+            message: isContactPaused
+              ? 'Mensagem recebida, mas o robô está pausado para humano nesta conversa'
+              : 'Mensagem recebida no WhatsApp, mas o robô está DESATIVADO no painel',
             details: { senderPhone, incomingText },
           });
         } catch (e) {}
       }
       return NextResponse.json({
-        status: 'automation_disabled',
-        message: 'Robô de atendimento desativado pelo usuário no painel.',
+        status: isContactPaused ? 'human_paused' : 'automation_disabled',
+        message: 'Robô de atendimento desativado ou pausado pelo usuário.',
       });
     }
 
-    // 8. Gerar Resposta Inteligente com o Motor Semântico & FAQs
+    // 9. Gerar Resposta Inteligente com o Motor Semântico & FAQs
     const aiResult = await generateAIWhatsAppResponse({
       incomingMessage: incomingText,
       contactWaId: senderPhone,
       contactName: senderName,
-      conversationHistory: [],
+      conversationHistory,
       settings,
       availableFaqs: faqs,
       knowledgeBase,
     });
 
-    // 8. Configuração da Z-API / Z-API Omni
+    // 10. Configuração da Z-API / Z-API Omni
     const channelId =
       body.channelId ||
       body.message?.channel_id ||
@@ -169,7 +272,7 @@ export async function POST(req: NextRequest) {
       clientToken: settings.zapi_client_token || settings.whatsapp_verify_token || process.env.ZAPI_CLIENT_TOKEN,
     };
 
-    // 9. Enviar Foto se houver mídia vinculada no FAQ
+    // 11. Enviar Foto se houver mídia vinculada no FAQ
     if (aiResult.mediaToSend && aiResult.mediaToSend.url) {
       try {
         await sendZApiImage(
@@ -183,12 +286,38 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 10. Enviar Resposta de Texto via Z-API
+    // 12. Enviar Resposta de Texto via Z-API
     let sendResult: any = null;
     if (aiResult.text) {
       sendResult = await sendZApiText(senderPhone, aiResult.text, zapiConfig);
     }
 
+    // 13. Salvar Mensagem Enviada pelo Robô no Banco de Dados
+    if (conversationId && isSupabaseConfigured() && aiResult.text) {
+      try {
+        await supabaseAdmin.from('messages').insert({
+          conversation_id: conversationId,
+          sender_type: 'ai',
+          message_type: 'text',
+          content: aiResult.text,
+          media_url: aiResult.mediaToSend?.url || null,
+          status: sendResult?.success ? 'delivered' : 'pending',
+        });
+
+        await supabaseAdmin
+          .from('conversations')
+          .update({
+            last_message_preview: aiResult.text.slice(0, 100),
+            last_message_at: new Date().toISOString(),
+            unread_count: 0,
+          })
+          .eq('id', conversationId);
+      } catch (msgErr) {
+        console.error('[Z-API Webhook] Erro ao registrar mensagem do robô:', msgErr);
+      }
+    }
+
+    // 14. Registrar no System Logs
     if (isSupabaseConfigured()) {
       try {
         await supabaseAdmin.from('system_logs').insert({
