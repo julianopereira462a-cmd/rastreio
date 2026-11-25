@@ -33,6 +33,16 @@ function normalizeBrText(text: string): string {
     .trim();
 }
 
+// Mapa de Categorias de CNH e Veículos
+const CATEGORY_MAP: Record<string, string[]> = {
+  a: ['categoria a', 'cnh a', 'moto', 'motocicleta', 'carteira a', 'habilitacao a', 'letra a', 'motoquinha', 'duas rodas'],
+  b: ['categoria b', 'cnh b', 'carro', 'automovel', 'carteira b', 'habilitacao b', 'letra b', 'quatro rodas'],
+  ab: ['categoria ab', 'cnh ab', 'carro e moto', 'moto e carro', 'ab'],
+  c: ['categoria c', 'cnh c', 'caminhao'],
+  d: ['categoria d', 'cnh d', 'onibus', 'van'],
+  e: ['categoria e', 'cnh e', 'carreta'],
+};
+
 // Dicionário de Sinônimos e Intenções Comuns de WhatsApp
 const SYNONYM_GROUPS: Record<string, string[]> = {
   legitimidade: [
@@ -40,13 +50,13 @@ const SYNONYM_GROUPS: Record<string, string[]> = {
     'valida', 'funciona', 'confiavel', 'golpe', 'seguro', 'confiar', 'garantido'
   ],
   preco: [
-    'valor', 'preco', 'quanto custa', 'quanto e', 'quanto sai', 'tabela', 'pagar', 'pix', 'cartao'
+    'valor', 'preco', 'quanto custa', 'quanto e', 'quanto sai', 'tabela', 'pagar', 'pix', 'cartao', 'custa', 'valores', 'quanto ta'
   ],
   prazo: [
-    'prazo', 'demora', 'tempo', 'dias', 'quando fica pronto', 'rapido', 'horas'
+    'prazo', 'demora', 'tempo', 'dias', 'quando fica pronto', 'rapido', 'horas', 'entrega', 'entregar', 'chega', 'demorar', 'demoram'
   ],
   documentos: [
-    'documentos', 'preciso', 'enviar', 'foto', 'rg', 'cpf', 'comprovante', 'requisito'
+    'documentos', 'documentacao', 'preciso', 'enviar', 'foto', 'rg', 'cpf', 'comprovante', 'requisito', 'mandar', 'necessario', 'necessarios'
   ]
 };
 
@@ -57,6 +67,19 @@ function getGreetingByHour(): string {
   if (brHour >= 5 && brHour < 12) return 'Bom dia';
   if (brHour >= 12 && brHour < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+// Formatar resposta educada e completa se o usuário cadastrou apenas número
+function formatAnswerPolitely(faq: FAQ): string {
+  const ans = faq.answer.trim();
+  // Se for apenas um número puro como "700" ou "R$ 700"
+  if (/^R?\$?\s*\d+(\.\d{3})*(,\d{2})?$/.test(ans)) {
+    const cleanNum = ans.replace(/[^\d]/g, '');
+    const num = Number(cleanNum);
+    const formatted = !isNaN(num) ? `R$ ${num.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : ans;
+    return `O valor para ${faq.question.replace(/\?+/g, '').trim()} é de ${formatted} à vista no PIX, ou parcelado em até 12x no cartão de crédito! Você gostaria de dar início ao processo ou tem alguma dúvida?`;
+  }
+  return ans;
 }
 
 /**
@@ -77,8 +100,8 @@ export async function generateAIWhatsAppResponse(
   const normalizedInput = normalizeBrText(incomingMessage);
   const timeGreeting = getGreetingByHour();
 
-  // 1. TRATAMENTO ULTRA GENTIL PARA SAUDAÇÕES (Cumprimentos)
-  const isGreeting = [
+  // 1. TRATAMENTO ULTRA GENTIL PARA SAUDAÇÕES PURAS (Cumprimentos)
+  const isGreetingWord = [
     'boa noite', 'boa noitre', 'boanoite',
     'bom dia', 'bomdia',
     'boa tarde', 'boatarde',
@@ -88,12 +111,19 @@ export async function generateAIWhatsAppResponse(
     'como vai', 'fala'
   ].some((g) => normalizedInput === g || normalizedInput.startsWith(g + ' ') || normalizedInput.endsWith(' ' + g));
 
-  const hasSpecificDoubt = Object.values(SYNONYM_GROUPS).some((group) =>
-    group.some((w) => normalizedInput.includes(w))
+  const hasSpecificCategory = Object.values(CATEGORY_MAP).some((group) =>
+    group.some((w) => normalizedInput.includes(w) || (' ' + normalizedInput + ' ').includes(' ' + w + ' '))
   );
 
-  // Se a pessoa apenas saudou (ex: "boa noite", "olá", "bom dia"), responde com carinho, educação e presteza
-  if (isGreeting && !hasSpecificDoubt) {
+  const hasSpecificDoubt =
+    hasSpecificCategory ||
+    Object.values(SYNONYM_GROUPS).some((group) =>
+      group.some((w) => normalizedInput.includes(w))
+    ) ||
+    normalizedInput.includes('cnh');
+
+  // Se a pessoa apenas saudou (sem perguntar nada de produto ou categoria)
+  if (isGreetingWord && !hasSpecificDoubt) {
     let saudacao = timeGreeting;
     if (normalizedInput.includes('noite') || normalizedInput.includes('noitre')) saudacao = 'Boa noite';
     else if (normalizedInput.includes('tarde')) saudacao = 'Boa tarde';
@@ -134,38 +164,74 @@ export async function generateAIWhatsAppResponse(
     const normalizedQuestion = normalizeBrText(faq.question);
     const normalizedAnswer = normalizeBrText(faq.answer);
 
-    // Match direto
-    if (normalizedInput === normalizedQuestion || normalizedInput.includes(normalizedQuestion)) {
-      score += 60;
+    // 3.1 Match exato ou substring mútua
+    if (normalizedInput === normalizedQuestion) {
+      score += 100;
+    } else if (normalizedInput.includes(normalizedQuestion)) {
+      score += 75;
+    } else if (normalizedQuestion.includes(normalizedInput) && normalizedInput.length >= 3) {
+      // Ex: "cnh a" dentro de "qual valor da categoria a cnh a"
+      score += 80;
     }
 
-    // Palavras em comum
-    const inputWords = normalizedInput.split(' ').filter((w) => w.length > 2);
-    const questionWords = normalizedQuestion.split(' ').filter((w) => w.length > 2);
-
-    let commonWordsCount = 0;
-    for (const iw of inputWords) {
-      if (questionWords.includes(iw)) {
-        commonWordsCount++;
+    // 3.2 Variações cadastradas do FAQ
+    if (Array.isArray(faq.question_variations)) {
+      for (const v of faq.question_variations) {
+        const normV = normalizeBrText(v);
+        if (normV && normV.length >= 2) {
+          if (normalizedInput === normV) score += 95;
+          else if (normalizedInput.includes(normV) || normV.includes(normalizedInput)) score += 70;
+        }
       }
     }
 
-    if (questionWords.length > 0 && commonWordsCount > 0) {
-      score += (commonWordsCount / questionWords.length) * 45;
+    // 3.3 Palavras-chave cadastradas
+    if (Array.isArray(faq.keywords)) {
+      for (const kw of faq.keywords) {
+        const normKw = normalizeBrText(kw);
+        if (normKw && normalizedInput.includes(normKw)) score += 35;
+      }
     }
 
-    // Detecção Inteligente de Sinônimos
+    // 3.4 Detecção de Categorias de Habilitação (A, B, AB, C, D, E)
+    for (const [cat, syns] of Object.entries(CATEGORY_MAP)) {
+      const paddedInput = ' ' + normalizedInput + ' ';
+      const paddedQ = ' ' + normalizedQuestion + ' ';
+      const inputHasCat = syns.some((item) => paddedInput.includes(' ' + item + ' ') || normalizedInput.includes(item));
+      const faqHasCat = syns.some((item) => paddedQ.includes(' ' + item + ' ') || normalizedQuestion.includes(item));
+
+      if (inputHasCat && faqHasCat) {
+        score += 85; // Mesma categoria encontrada!
+      } else if (inputHasCat && !faqHasCat && normalizedQuestion.includes('cnh digital')) {
+        score -= 45; // Penaliza FAQ genérico de CNH Digital se o cliente pediu categoria específica
+      }
+    }
+
+    // 3.5 Palavras em comum (mantendo letras de categoria a, b, c, d, e)
+    const isMeaningful = (w: string) => w.length >= 2 || ['a', 'b', 'c', 'd', 'e'].includes(w);
+    const inputWords = normalizedInput.split(' ').filter(isMeaningful);
+    const questionWords = normalizedQuestion.split(' ').filter(isMeaningful);
+
+    let commonCount = 0;
+    for (const iw of inputWords) {
+      if (questionWords.includes(iw)) commonCount++;
+    }
+    if (questionWords.length > 0 && commonCount > 0) {
+      score += (commonCount / Math.max(inputWords.length, questionWords.length)) * 50;
+    }
+
+    // 3.6 Grupos de Sinônimos (preço, prazo, legitimidade, documentos)
     for (const group of Object.values(SYNONYM_GROUPS)) {
-      const hasInputGroup = inputWords.some((w) => group.includes(w));
-      const hasQuestionGroup = questionWords.some((w) => group.includes(w));
+      const hasInputGroup = inputWords.some((w) => group.includes(w)) || group.some((g) => normalizedInput.includes(g));
+      const hasQuestionGroup = questionWords.some((w) => group.includes(w)) || group.some((g) => normalizedQuestion.includes(g));
       const hasAnswerGroup = group.some((g) => normalizedAnswer.includes(g));
 
       if (hasInputGroup && (hasQuestionGroup || hasAnswerGroup)) {
-        score += 35;
+        score += 40;
       }
     }
 
-    if (score > highestScore && score >= 20) {
+    if (score > highestScore && score >= 25) {
       highestScore = score;
       bestFaqMatch = faq;
     }
@@ -177,22 +243,22 @@ export async function generateAIWhatsAppResponse(
     mediaToSend = {
       url: bestFaqMatch.media_url,
       type: bestFaqMatch.media_type || 'image',
-      caption: bestFaqMatch.media_caption || bestFaqMatch.answer.slice(0, 150),
+      caption: bestFaqMatch.media_caption || formatAnswerPolitely(bestFaqMatch).slice(0, 150),
       filename: bestFaqMatch.media_filename,
     };
   }
 
-  // Se houve match com FAQ de alta confiança, já entrega a resposta oficial cadastrada com toda gentileza!
+  // Se houve match com FAQ acima do limiar, já entrega a resposta oficial formatada com carinho!
   if (bestFaqMatch && highestScore >= 35) {
     return {
-      text: bestFaqMatch.answer,
+      text: formatAnswerPolitely(bestFaqMatch),
       matchedFaq: bestFaqMatch,
       mediaToSend,
       confidence: Math.min(100, Math.round(highestScore)),
     };
   }
 
-  // 4. CONSTRUÇÃO DO CONTEXTO RAG PARA CASOS COMPLEXOS
+  // 4. CONSTRUÇÃO DO CONTEXTO RAG PARA IA
   const faqContext = availableFaqs
     .filter((f) => f.is_active)
     .map(
@@ -210,18 +276,15 @@ export async function generateAIWhatsAppResponse(
     .join('\n');
 
   const systemPrompt = `
-Você é o atendente de WhatsApp da empresa "${settings.company_name || 'nossa equipe'}".
-Seu tom é EXTREMAMENTE gentil, acolhedor, profissional e prestativo.
-- Sempre cumprimente com educação (ex: "Olá! Tudo bem?").
-- Responda de forma clara, natural e humana (estilo WhatsApp do Brasil).
-- NUNCA diga que é robô ou IA.
-- Use as respostas oficiais cadastradas sempre que o assunto coincidir.
+Você é o atendente de WhatsApp da empresa "${settings.company_name || 'Assessoria CNH'}".
+Seu tom é EXTREMAMENTE gentil, prestativo, educado e natural (WhatsApp do Brasil).
+- Se o cliente perguntar de preços, prazos ou documentos, responda ESTRITAMENTE com base nos itens cadastrados:
+${faqContext}
 
-PERGUNTAS E RESPOSTAS CADASTRADAS:
-${faqContext || 'Nenhuma'}
+NUNCA diga que é robô ou IA.
 `;
 
-  // 5. TENTATIVA COM IA OU FALLBACK SUPER GENTIL
+  // 5. TENTATIVA COM IA OU FALLBACK GENTIL
   try {
     const aiResponseText = await callLLM({
       provider: settings.ai_provider,
@@ -233,7 +296,7 @@ ${faqContext || 'Nenhuma'}
       clientName: contactName,
     });
 
-    if (aiResponseText && aiResponseText.length > 3) {
+    if (aiResponseText && aiResponseText.length > 5) {
       return {
         text: aiResponseText,
         matchedFaq: bestFaqMatch || undefined,
@@ -242,28 +305,28 @@ ${faqContext || 'Nenhuma'}
       };
     }
   } catch (error: any) {
-    console.warn('[AI Engine Error - Usando Fallback Gentil]');
+    console.warn('[AI Engine Error - Fallback]');
   }
 
-  // Fallback se houver algum FAQ detectado
+  // Se teve algum match mínimo
   if (bestFaqMatch) {
     return {
-      text: bestFaqMatch.answer,
+      text: formatAnswerPolitely(bestFaqMatch),
       matchedFaq: bestFaqMatch,
       mediaToSend,
-      confidence: 90,
+      confidence: 85,
     };
   }
 
-  // Fallback humanizado e ultra gentil
+  // Fallback acolhedor e prestativo
   return {
-    text: `Olá! ${timeGreeting}! Tudo bem? Seja muito bem-vindo! Me conta certinho o que você precisa que eu já te oriento na hora! 😊`,
+    text: `Olá! ${timeGreeting}! Tudo bem? Me conta certinho: você precisa de CNH Categoria A (moto), B (carro) ou renovação? Já te passo os valores e detalhes na hora! 😊`,
     confidence: 60,
   };
 }
 
 /**
- * Chamada com suporte a modelos Gemini e OpenAI
+ * Chamada de LLM com timeout resiliente
  */
 async function callLLM({
   provider,
@@ -289,11 +352,8 @@ ${historyText || '(Início)'}
 Cliente (${clientName || 'Novo Contato'}): ${clientMessage}
 Atendente:`;
 
-  if (!apiKey) {
-    return '';
-  }
+  if (!apiKey) return '';
 
-  // Tentativa Gemini com timeout de 5 segundos
   if (provider === 'gemini' || !provider) {
     const modelsToTry = [model, 'gemini-2.5-flash', 'gemini-flash-latest'].filter(Boolean);
 
@@ -301,23 +361,15 @@ Atendente:`;
       try {
         const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4500);
+        const timeout = setTimeout(() => controller.abort(), 4000);
 
         const res = await fetch(url, {
           method: 'POST',
           signal: controller.signal,
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: `${systemPrompt}\n\n${promptUser}` }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.7,
-              maxOutputTokens: 350,
-            },
+            contents: [{ role: 'user', parts: [{ text: `${systemPrompt}\n\n${promptUser}` }] }],
+            generationConfig: { temperature: 0.7, maxOutputTokens: 350 },
           }),
         });
         clearTimeout(timeout);
@@ -327,15 +379,11 @@ Atendente:`;
           const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
           if (text) return cleanResponse(text);
         }
-      } catch (e) {
-        // Tenta próximo modelo
-      }
+      } catch (e) {}
     }
-
     return '';
   }
 
-  // OpenAI / Groq
   const endpoint =
     provider === 'groq'
       ? 'https://api.groq.com/openai/v1/chat/completions'
@@ -344,7 +392,7 @@ Atendente:`;
   const defaultModel = provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gpt-4o-mini';
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 4500);
+  const timeout = setTimeout(() => controller.abort(), 4000);
 
   const res = await fetch(endpoint, {
     method: 'POST',
