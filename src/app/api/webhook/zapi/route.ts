@@ -13,19 +13,24 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from('system_logs').insert({
         event_type: 'webhook_received',
         level: 'info',
-        message: 'Webhook Z-API acionado',
+        message: `Webhook Z-API acionado: ${body.event || 'mensagem'}`,
         details: body,
       }).catch((e) => console.error('Erro ao logar webhook:', e));
     }
 
-    // 1. Validar se a mensagem foi enviada por nós mesmos ou se é de grupo
+    // 1. Ignorar eventos que não sejam de mensagem recebida (ex: MESSAGE_STATUS, MESSAGE_DELIVERY)
+    if (body.event && body.event !== 'MESSAGE_RECEIVED') {
+      return NextResponse.json({ status: 'ignored_event', event: body.event });
+    }
+
+    // 2. Validar se a mensagem foi enviada por nós mesmos ou se é de grupo
     const isFromMe = body.fromMe || body.message?.fromMe;
     const isGroup = body.isGroup || body.message?.isGroup || body.chat?.isGroup;
     if (isFromMe || isGroup) {
       return NextResponse.json({ status: 'ignored_outgoing_or_group' });
     }
 
-    // 2. Extrair Telefone do Remetente (Suporte a Z-API Clássica & Z-API Omni)
+    // 3. Extrair Telefone do Remetente (Suporte a Z-API Clássica & Z-API Omni)
     const senderPhone =
       body.phone ||
       body.senderPhone ||
@@ -37,13 +42,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'no_phone' });
     }
 
-    // 3. Extrair Nome do Remetente
+    // 4. Extrair Nome do Remetente
     const senderName =
       body.senderName ||
       body.message?.author?.name ||
       'Cliente';
 
-    // 4. Extrair Texto da Mensagem
+    // 5. Extrair Texto da Mensagem
     let incomingText = '';
     if (typeof body.text === 'string') {
       incomingText = body.text;
@@ -51,6 +56,10 @@ export async function POST(req: NextRequest) {
       incomingText = body.text.message;
     } else if (body.message?.content?.body?.message) {
       incomingText = body.message.content.body.message;
+    } else if (body.message?.content?.body?.text) {
+      incomingText = body.message.content.body.text;
+    } else if (body.message?.content?.text) {
+      incomingText = body.message.content.text;
     } else if (body.message?.content?.body?.caption) {
       incomingText = body.message.content.body.caption;
     } else if (body.image?.caption) {
@@ -63,7 +72,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'empty_text' });
     }
 
-    // 5. Carregar Configurações e FAQs do Banco de Dados
+    // 6. Carregar Configurações e FAQs do Banco de Dados
     let settings: any = {
       company_name: 'Minha Empresa',
       ai_tone: 'amigável e rápido',
@@ -88,7 +97,7 @@ export async function POST(req: NextRequest) {
       if (kData) knowledgeBase = kData as KnowledgeItem[];
     }
 
-    // 6. Gerar Resposta Inteligente com o Motor Semântico & FAQs
+    // 7. Gerar Resposta Inteligente com o Motor Semântico & FAQs
     const aiResult = await generateAIWhatsAppResponse({
       incomingMessage: incomingText,
       contactWaId: senderPhone,
@@ -99,14 +108,14 @@ export async function POST(req: NextRequest) {
       knowledgeBase,
     });
 
-    // 7. Configuração da Z-API / Z-API Omni
+    // 8. Configuração da Z-API / Z-API Omni
     const zapiConfig = {
-      instanceId: settings.zapi_instance_id || settings.whatsapp_phone_number_id || process.env.ZAPI_INSTANCE_ID,
+      instanceId: body.channelId || settings.zapi_instance_id || settings.whatsapp_phone_number_id || process.env.ZAPI_INSTANCE_ID,
       token: settings.zapi_token || settings.whatsapp_access_token || process.env.ZAPI_TOKEN,
       clientToken: settings.zapi_client_token || settings.whatsapp_verify_token || process.env.ZAPI_CLIENT_TOKEN,
     };
 
-    // 8. Enviar Foto se houver mídia vinculada no FAQ
+    // 9. Enviar Foto se houver mídia vinculada no FAQ
     if (aiResult.mediaToSend && aiResult.mediaToSend.url) {
       try {
         await sendZApiImage(
@@ -120,7 +129,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 9. Enviar Resposta de Texto via Z-API
+    // 10. Enviar Resposta de Texto via Z-API
     let sendResult: any = null;
     if (aiResult.text) {
       sendResult = await sendZApiText(senderPhone, aiResult.text, zapiConfig);
