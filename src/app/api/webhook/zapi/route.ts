@@ -7,9 +7,26 @@ import { FAQ, KnowledgeItem, Message, SystemSettings } from '@/types';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+export async function GET() {
+  return NextResponse.json({
+    status: 'online',
+    service: 'Z-API Webhook Endpoint',
+    timestamp: new Date().toISOString(),
+  });
+}
+
+export async function HEAD() {
+  return new Response(null, { status: 200 });
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    let body: any = {};
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ status: 'empty_or_invalid_json' }, { status: 200 });
+    }
 
     // 1. Ignorar apenas se for evento explícito de status (ex: MESSAGE_STATUS, MESSAGE_DELIVERY)
     if (body.event && body.event !== 'MESSAGE_RECEIVED') {
@@ -303,6 +320,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error('[Z-API Webhook Error]', err);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    // Sempre retornar status 200 para a Z-API não marcar o webhook como falho nem reenviar em loop
+    return NextResponse.json({ success: false, error: err?.message || 'internal_handled_error' }, { status: 200 });
   }
 }
