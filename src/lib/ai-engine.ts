@@ -1,6 +1,6 @@
 import { FAQ, KnowledgeItem, Message, SystemSettings } from '@/types';
 
-interface GenerateResponseInput {
+export interface GenerateResponseInput {
   incomingMessage: string;
   contactWaId: string;
   contactName?: string;
@@ -10,9 +10,20 @@ interface GenerateResponseInput {
   knowledgeBase: KnowledgeItem[];
 }
 
-interface AIResponseOutput {
+export interface GenerateMultiMessageInput {
+  incomingMessages: string[];
+  contactWaId: string;
+  contactName?: string;
+  conversationHistory: Message[];
+  settings: SystemSettings;
+  availableFaqs: FAQ[];
+  knowledgeBase: KnowledgeItem[];
+}
+
+export interface AIResponseOutput {
   text: string;
   matchedFaq?: FAQ;
+  matchedFaqs?: FAQ[];
   mediaToSend?: {
     url: string;
     type: 'image' | 'document' | 'video' | 'audio';
@@ -459,6 +470,143 @@ NUNCA diga que é robô ou IA.
   return {
     text: `Olá! ${greetingToUse}! Tudo bem? Me conta certinho: você precisa de CNH Categoria A (moto), B (carro) ou C (caminhão)? Já te passo os valores e detalhes na hora! 😊`,
     confidence: 60,
+  };
+}
+
+export function getTopicTitle(faq: FAQ): string {
+  const q = faq.question.toLowerCase();
+  if (q.includes('ab')) return 'Categoria AB (Carro e Moto)';
+  if (q.includes('categoria a') || q.includes('cnh a')) return 'Categoria A (Moto)';
+  if (q.includes('categoria b') || q.includes('cnh b')) return 'Categoria B (Carro)';
+  if (q.includes('categoria c') || q.includes('cnh c')) return 'Categoria C (Caminhão)';
+  if (q.includes('categoria d') || q.includes('cnh d')) return 'Categoria D (Ônibus/Van)';
+  if (q.includes('categoria e') || q.includes('cnh e')) return 'Categoria E (Carreta)';
+  if (q.includes('fisica')) return 'CNH Física (Impressa)';
+  if (q.includes('paga')) return 'Condições de Pagamento';
+  if (q.includes('aulas') || q.includes('provas') || q.includes('exames')) return 'Provas, Aulas e Exames';
+  if (q.includes('document')) return 'Documentos Necessários';
+  if (q.includes('prazo') || q.includes('tempo')) return 'Prazo de Entrega';
+  if (q.includes('legitima')) return 'Autenticidade e Validade';
+  return faq.question.split(/[?,/]/)[0].trim();
+}
+
+/**
+ * Processador Inteligente de Mensagens Consecutivas (Fila / Agrupamento de Perguntas)
+ * Se o cliente enviar 2, 3, 4 mensagens seguidas, entende todas e responde de forma organizada.
+ */
+export async function generateMultiMessageResponse(
+  input: GenerateMultiMessageInput
+): Promise<AIResponseOutput> {
+  const {
+    incomingMessages,
+    contactName,
+    conversationHistory,
+    settings,
+    availableFaqs,
+    knowledgeBase,
+  } = input;
+
+  if (!incomingMessages || incomingMessages.length === 0) {
+    return { text: '', confidence: 0 };
+  }
+
+  // Se for apenas 1 mensagem avulsa, executa o motor normal
+  if (incomingMessages.length === 1) {
+    return generateAIWhatsAppResponse({
+      incomingMessage: incomingMessages[0],
+      contactWaId: input.contactWaId,
+      contactName,
+      conversationHistory,
+      settings,
+      availableFaqs,
+      knowledgeBase,
+    });
+  }
+
+  // Múltiplas mensagens na sequência:
+  let detectedGreeting = '';
+  const matchedFaqMap = new Map<string, FAQ>();
+  let mediaToSend: any = undefined;
+
+  for (const msg of incomingMessages) {
+    const singleResult = await generateAIWhatsAppResponse({
+      incomingMessage: msg,
+      contactWaId: input.contactWaId,
+      contactName,
+      conversationHistory,
+      settings,
+      availableFaqs,
+      knowledgeBase,
+    });
+
+    const gr = extractGreeting(normalizeBrText(msg));
+    if (gr && !detectedGreeting) {
+      detectedGreeting = gr;
+    }
+
+    if (singleResult.matchedFaq) {
+      if (!matchedFaqMap.has(singleResult.matchedFaq.id)) {
+        matchedFaqMap.set(singleResult.matchedFaq.id, singleResult.matchedFaq);
+      }
+      if (singleResult.mediaToSend && !mediaToSend) {
+        mediaToSend = singleResult.mediaToSend;
+      }
+    }
+  }
+
+  const matchedFaqs = Array.from(matchedFaqMap.values());
+  const timeGreeting = getGreetingByHour();
+  const greetingHeader = detectedGreeting || timeGreeting;
+
+  // Caso 1: Nenhuma dúvida técnica nas mensagens (ex: apenas cumprimentos "oi", "boa tarde", "tudo bem?")
+  if (matchedFaqs.length === 0) {
+    const combinedText = incomingMessages.join(' | ');
+    return generateAIWhatsAppResponse({
+      incomingMessage: combinedText,
+      contactWaId: input.contactWaId,
+      contactName,
+      conversationHistory,
+      settings,
+      availableFaqs,
+      knowledgeBase,
+    });
+  }
+
+  // Caso 2: Apenas 1 dúvida única (mesmo que dita em 2 mensagens redundantes)
+  if (matchedFaqs.length === 1) {
+    let finalAnswer = formatAnswerPolitely(matchedFaqs[0]);
+    if (detectedGreeting && !finalAnswer.toLowerCase().startsWith(detectedGreeting.toLowerCase())) {
+      finalAnswer = `${detectedGreeting}! ${finalAnswer}`;
+    }
+    return {
+      text: finalAnswer,
+      matchedFaq: matchedFaqs[0],
+      matchedFaqs,
+      mediaToSend,
+      confidence: 100,
+    };
+  }
+
+  // Caso 3: Múltiplas dúvidas distintas na sequência (ex: AB + Física + Provas)
+  // Monta resposta unificada, elegante e estruturada
+  const lines: string[] = [
+    `Olá! ${greetingHeader}! Seguem todas as informações para você:`,
+    '',
+  ];
+
+  for (const faq of matchedFaqs) {
+    lines.push(`📌 *${getTopicTitle(faq)}*:\n${faq.answer.trim()}`);
+    lines.push('');
+  }
+
+  lines.push('Qualquer outra dúvida ou se desejar dar início ao procedimento, estou sempre por aqui! Conte comigo! 👍');
+
+  return {
+    text: lines.join('\n'),
+    matchedFaq: matchedFaqs[0],
+    matchedFaqs,
+    mediaToSend,
+    confidence: 100,
   };
 }
 
