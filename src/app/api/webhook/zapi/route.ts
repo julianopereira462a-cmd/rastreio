@@ -8,6 +8,16 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
+    // Logar recebimento no banco de dados para rastreio
+    if (isSupabaseConfigured()) {
+      await supabaseAdmin.from('system_logs').insert({
+        event_type: 'webhook_received',
+        level: 'info',
+        message: 'Webhook Z-API acionado',
+        details: body,
+      }).catch((e) => console.error('Erro ao logar webhook:', e));
+    }
+
     // 1. Validar se a mensagem foi enviada por nós mesmos ou se é de grupo
     const isFromMe = body.fromMe || body.message?.fromMe;
     const isGroup = body.isGroup || body.message?.isGroup || body.chat?.isGroup;
@@ -111,8 +121,18 @@ export async function POST(req: NextRequest) {
     }
 
     // 9. Enviar Resposta de Texto via Z-API
+    let sendResult: any = null;
     if (aiResult.text) {
-      await sendZApiText(senderPhone, aiResult.text, zapiConfig);
+      sendResult = await sendZApiText(senderPhone, aiResult.text, zapiConfig);
+    }
+
+    if (isSupabaseConfigured()) {
+      await supabaseAdmin.from('system_logs').insert({
+        event_type: 'whatsapp_sent',
+        level: sendResult?.success ? 'info' : 'warn',
+        message: sendResult?.success ? 'Mensagem enviada com sucesso' : 'Tentativa de envio de mensagem',
+        details: { senderPhone, reply: aiResult.text, sendResult },
+      }).catch(() => {});
     }
 
     return NextResponse.json({
