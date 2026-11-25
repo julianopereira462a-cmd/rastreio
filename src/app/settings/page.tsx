@@ -15,6 +15,8 @@ import {
   Copy,
   Check,
   Smartphone,
+  Power,
+  PowerOff,
 } from 'lucide-react';
 import { SystemSettings } from '@/types';
 
@@ -95,6 +97,93 @@ export default function SettingsPage() {
             <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Configurações salvas no Supabase com sucesso!
           </div>
         )}
+      </div>
+
+      {/* Master Switch: Ativar / Desativar Bot */}
+      <div
+        className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm ${
+          settings.is_automation_enabled
+            ? 'bg-emerald-50/90 border-emerald-300'
+            : 'bg-rose-50/90 border-rose-300'
+        }`}
+      >
+        <div className="flex items-center gap-3.5">
+          <div
+            className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+              settings.is_automation_enabled
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
+                : 'bg-rose-600 text-white shadow-md shadow-rose-200'
+            }`}
+          >
+            {settings.is_automation_enabled ? (
+              <Power className="w-6 h-6 animate-pulse" />
+            ) : (
+              <PowerOff className="w-6 h-6" />
+            )}
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">
+                Robô de Atendimento WhatsApp:{' '}
+                <span
+                  className={
+                    settings.is_automation_enabled
+                      ? 'text-emerald-700'
+                      : 'text-rose-700'
+                  }
+                >
+                  {settings.is_automation_enabled ? 'ATIVO' : 'DESATIVADO'}
+                </span>
+              </h2>
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                  settings.is_automation_enabled
+                    ? 'bg-emerald-200 text-emerald-900'
+                    : 'bg-rose-200 text-rose-900'
+                }`}
+              >
+                {settings.is_automation_enabled ? 'Respondendo Clientes' : 'Pausado'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-0.5">
+              {settings.is_automation_enabled
+                ? 'O robô está respondendo as dúvidas e mensagens dos clientes automaticamente.'
+                : 'O robô está pausado. Nenhuma mensagem será respondida automaticamente até você reativar.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={async () => {
+            const next = !settings.is_automation_enabled;
+            setSettings({ ...settings, is_automation_enabled: next });
+            try {
+              await fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ is_automation_enabled: next }),
+              });
+            } catch (err) {
+              console.error(err);
+            }
+          }}
+          className={`px-5 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 transition-all cursor-pointer shadow-sm ${
+            settings.is_automation_enabled
+              ? 'bg-rose-600 hover:bg-rose-700 text-white'
+              : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+          }`}
+        >
+          {settings.is_automation_enabled ? (
+            <>
+              <PowerOff className="w-4 h-4" /> Desativar Robô Agora
+            </>
+          ) : (
+            <>
+              <Power className="w-4 h-4" /> Ativar Robô Agora
+            </>
+          )}
+        </button>
       </div>
 
       <form onSubmit={handleSave} className="space-y-6">

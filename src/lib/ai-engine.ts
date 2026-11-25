@@ -22,6 +22,14 @@ interface AIResponseOutput {
   confidence: number;
 }
 
+// Stopwords em Português para evitar matches falsos em palavras comuns
+const PT_STOPWORDS = new Set([
+  'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos', 'nas',
+  'por', 'pra', 'para', 'com', 'que', 'se', 'um', 'uma', 'uns', 'umas',
+  'os', 'as', 'e', 'ou', 'mas', 'mais', 'me', 'te', 'eu', 'voce', 'vc',
+  'ele', 'ela', 'o', 'a'
+]);
+
 // Normalizador de texto para Português do Brasil (remove acentos e pontuação)
 function normalizeBrText(text: string): string {
   return text
@@ -33,33 +41,6 @@ function normalizeBrText(text: string): string {
     .trim();
 }
 
-// Mapa de Categorias de CNH e Veículos
-const CATEGORY_MAP: Record<string, string[]> = {
-  a: ['categoria a', 'cnh a', 'moto', 'motocicleta', 'carteira a', 'habilitacao a', 'letra a', 'motoquinha', 'duas rodas'],
-  b: ['categoria b', 'cnh b', 'carro', 'automovel', 'carteira b', 'habilitacao b', 'letra b', 'quatro rodas'],
-  ab: ['categoria ab', 'cnh ab', 'carro e moto', 'moto e carro', 'ab'],
-  c: ['categoria c', 'cnh c', 'caminhao'],
-  d: ['categoria d', 'cnh d', 'onibus', 'van'],
-  e: ['categoria e', 'cnh e', 'carreta'],
-};
-
-// Dicionário de Sinônimos e Intenções Comuns de WhatsApp
-const SYNONYM_GROUPS: Record<string, string[]> = {
-  legitimidade: [
-    'verdadeira', 'legitima', 'original', 'quente', 'oficial', 'autentica',
-    'valida', 'funciona', 'confiavel', 'golpe', 'seguro', 'confiar', 'garantido'
-  ],
-  preco: [
-    'valor', 'preco', 'quanto custa', 'quanto e', 'quanto sai', 'tabela', 'pagar', 'pix', 'cartao', 'custa', 'valores', 'quanto ta'
-  ],
-  prazo: [
-    'prazo', 'demora', 'tempo', 'dias', 'quando fica pronto', 'rapido', 'horas', 'entrega', 'entregar', 'chega', 'demorar', 'demoram'
-  ],
-  documentos: [
-    'documentos', 'documentacao', 'preciso', 'enviar', 'foto', 'rg', 'cpf', 'comprovante', 'requisito', 'mandar', 'necessario', 'necessarios'
-  ]
-};
-
 // Obter saudação correta pelo fuso horário de Brasília (UTC-3)
 function getGreetingByHour(): string {
   const now = new Date();
@@ -67,6 +48,15 @@ function getGreetingByHour(): string {
   if (brHour >= 5 && brHour < 12) return 'Bom dia';
   if (brHour >= 12 && brHour < 18) return 'Boa tarde';
   return 'Boa noite';
+}
+
+// Extrair prefixo de cumprimento caso o cliente tenha saudado antes da pergunta
+function extractGreeting(normalizedInput: string): string {
+  if (/\b(boa|boas)\s+(noite|noitre|noitee|noiteee|notie)\b/i.test(normalizedInput)) return 'Boa noite';
+  if (/\b(boa|boas)\s+(tarde|tardee)\b/i.test(normalizedInput)) return 'Boa tarde';
+  if (/\b(bom|bons)\s+(dia|diaa)\b/i.test(normalizedInput)) return 'Bom dia';
+  if (/\b(ola|olá|oii?|oie|opa|salve|eai|eae)\b/i.test(normalizedInput)) return getGreetingByHour();
+  return '';
 }
 
 // Formatar resposta educada e completa se o usuário cadastrou apenas número
@@ -99,40 +89,63 @@ export async function generateAIWhatsAppResponse(
 
   const normalizedInput = normalizeBrText(incomingMessage);
   const timeGreeting = getGreetingByHour();
+  const detectedGreeting = extractGreeting(normalizedInput);
 
   // 1. TRATAMENTO ULTRA GENTIL PARA SAUDAÇÕES PURAS (Cumprimentos)
   const isGreetingWord = [
-    'boa noite', 'boa noitre', 'boanoite',
-    'bom dia', 'bomdia',
-    'boa tarde', 'boatarde',
-    'ola', 'olá', 'oi', 'oii', 'oiii',
-    'opa', 'e ai', 'eai',
+    'boa noite', 'boa noitre', 'boanoite', 'boa noitee', 'boa noiteee',
+    'bom dia', 'bomdia', 'bom diaa',
+    'boa tarde', 'boatarde', 'boa tardee',
+    'ola', 'olá', 'olaa', 'oi', 'oii', 'oiii', 'oie',
+    'opa', 'e ai', 'eai', 'eae', 'salve',
     'tudo bem', 'td bem', 'tudo bom', 'td bom',
-    'como vai', 'fala'
-  ].some((g) => normalizedInput === g || normalizedInput.startsWith(g + ' ') || normalizedInput.endsWith(' ' + g));
+    'como vai', 'fala', 'fala ai'
+  ].some((g) => {
+    return (
+      normalizedInput === g ||
+      normalizedInput.startsWith(g + ' ') ||
+      normalizedInput.endsWith(' ' + g)
+    );
+  });
 
-  const hasSpecificCategory = Object.values(CATEGORY_MAP).some((group) =>
-    group.some((w) => normalizedInput.includes(w) || (' ' + normalizedInput + ' ').includes(' ' + w + ' '))
-  );
+  // Verificação de intenções específicas no texto
+  const hasLegitimidadeIntent = [
+    'legitima', 'legitimo', 'verdadeira', 'verdadeiro', 'original', 'quente',
+    'oficial', 'autentica', 'autentico', 'golpe', 'fraude', 'confiar', 'confiavel',
+    'seguro', 'segura', 'garantia', 'garantido', 'blitz', 'prf', 'policia',
+    'fiscalizacao', 'detran', 'uber', '99', 'ifood', 'da certo', 'funciona'
+  ].some((term) => {
+    return new RegExp(`\\b${term}\\b`, 'i').test(normalizedInput);
+  });
+
+  const hasCatAIntent = /\b(categoria\s+a|cnh\s+a|cat\s+a|letra\s+a|moto|motocicleta|motoquinha|duas\s+rodas|da\s+a|pra\s+a)\b/i.test(normalizedInput);
+  const hasCatBIntent = /\b(categoria\s+b|cnh\s+b|cat\s+b|letra\s+b|carro|automovel|quatro\s+rodas|da\s+b|pra\s+b)\b/i.test(normalizedInput);
+  const hasCatCIntent = /\b(categoria\s+c|cnh\s+c|cat\s+c|letra\s+c|caminhao|da\s+c|pra\s+c)\b/i.test(normalizedInput);
+  const hasCatDIntent = /\b(categoria\s+d|cnh\s+d|cat\s+d|letra\s+d|onibus|van|da\s+d|pra\s+d)\b/i.test(normalizedInput);
+  const hasCatEIntent = /\b(categoria\s+e|cnh\s+e|cat\s+e|letra\s+e|carreta|da\s+e|pra\s+e)\b/i.test(normalizedInput);
+
+  const hasFisicaIntent = /\b(fisica|impressa|impresso|papel|plastificada|cartao)\b/i.test(normalizedInput);
+  const hasDocumentosIntent = /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito)\b/i.test(normalizedInput);
 
   const hasSpecificDoubt =
-    hasSpecificCategory ||
-    Object.values(SYNONYM_GROUPS).some((group) =>
-      group.some((w) => normalizedInput.includes(w))
-    ) ||
-    normalizedInput.includes('cnh');
+    hasLegitimidadeIntent ||
+    hasCatAIntent ||
+    hasCatBIntent ||
+    hasCatCIntent ||
+    hasCatDIntent ||
+    hasCatEIntent ||
+    hasFisicaIntent ||
+    hasDocumentosIntent ||
+    /\b(cnh|valor|preco|quanto|custa|demora|prazo|dias)\b/i.test(normalizedInput);
 
-  // Se a pessoa apenas saudou (sem perguntar nada de produto ou categoria)
+  // Se a pessoa apenas saudou (ex: "boa noite", "boa noitre", "bom dia", "olá", "oi tudo bem?")
   if (isGreetingWord && !hasSpecificDoubt) {
-    let saudacao = timeGreeting;
-    if (normalizedInput.includes('noite') || normalizedInput.includes('noitre')) saudacao = 'Boa noite';
-    else if (normalizedInput.includes('tarde')) saudacao = 'Boa tarde';
-    else if (normalizedInput.includes('dia')) saudacao = 'Bom dia';
+    const greetingToUse = detectedGreeting || timeGreeting;
 
     const greetingsResponses = [
-      `Olá! ${saudacao}! Tudo bem com você? Como posso te ajudar hoje? 😊`,
-      `${saudacao}! Seja muito bem-vindo! Em que posso te ajudar hoje?`,
-      `Olá, ${saudacao}! Tudo bem? Me conta como posso te orientar!`,
+      `Olá! ${greetingToUse}! Tudo bem com você? Como posso te ajudar hoje? 😊`,
+      `${greetingToUse}! Seja muito bem-vindo! Em que posso te ajudar hoje?`,
+      `Olá, ${greetingToUse}! Tudo bem? Me conta como posso te orientar!`,
     ];
 
     return {
@@ -166,12 +179,11 @@ export async function generateAIWhatsAppResponse(
 
     // 3.1 Match exato ou substring mútua
     if (normalizedInput === normalizedQuestion) {
-      score += 100;
+      score += 150;
     } else if (normalizedInput.includes(normalizedQuestion)) {
-      score += 75;
+      score += 90;
     } else if (normalizedQuestion.includes(normalizedInput) && normalizedInput.length >= 3) {
-      // Ex: "cnh a" dentro de "qual valor da categoria a cnh a"
-      score += 80;
+      score += 85;
     }
 
     // 3.2 Variações cadastradas do FAQ
@@ -179,8 +191,11 @@ export async function generateAIWhatsAppResponse(
       for (const v of faq.question_variations) {
         const normV = normalizeBrText(v);
         if (normV && normV.length >= 2) {
-          if (normalizedInput === normV) score += 95;
-          else if (normalizedInput.includes(normV) || normV.includes(normalizedInput)) score += 70;
+          if (normalizedInput === normV) {
+            score += 120;
+          } else if (normalizedInput.includes(normV) || normV.includes(normalizedInput)) {
+            score += 80;
+          }
         }
       }
     }
@@ -189,28 +204,69 @@ export async function generateAIWhatsAppResponse(
     if (Array.isArray(faq.keywords)) {
       for (const kw of faq.keywords) {
         const normKw = normalizeBrText(kw);
-        if (normKw && normalizedInput.includes(normKw)) score += 35;
+        if (normKw) {
+          if (new RegExp(`\\b${normKw}\\b`, 'i').test(normalizedInput)) {
+            score += 45;
+          }
+        }
       }
     }
 
-    // 3.4 Detecção de Categorias de Habilitação (A, B, AB, C, D, E)
-    for (const [cat, syns] of Object.entries(CATEGORY_MAP)) {
-      const paddedInput = ' ' + normalizedInput + ' ';
-      const paddedQ = ' ' + normalizedQuestion + ' ';
-      const inputHasCat = syns.some((item) => paddedInput.includes(' ' + item + ' ') || normalizedInput.includes(item));
-      const faqHasCat = syns.some((item) => paddedQ.includes(' ' + item + ' ') || normalizedQuestion.includes(item));
+    // 3.4 INTENÇÃO: LEGITIMIDADE / ORIGINAL / QUENTE / VERDADEIRA / CONFIÁVEL / GOLPE
+    const isFaqLegitimidade =
+      /legitima|verdadeira|original|quente|oficial|blitz|fiscalizacao|confiar|golpe/i.test(normalizedQuestion) ||
+      /legitima|original|blitz|fiscalizacao|prf|uber/i.test(normalizedAnswer);
 
-      if (inputHasCat && faqHasCat) {
-        score += 85; // Mesma categoria encontrada!
-      } else if (inputHasCat && !faqHasCat && normalizedQuestion.includes('cnh digital')) {
-        score -= 45; // Penaliza FAQ genérico de CNH Digital se o cliente pediu categoria específica
-      }
+    if (hasLegitimidadeIntent && isFaqLegitimidade) {
+      score += 250; // Boost definitivo para o FAQ de legitimidade!
     }
 
-    // 3.5 Palavras em comum (mantendo letras de categoria a, b, c, d, e)
-    const isMeaningful = (w: string) => w.length >= 2 || ['a', 'b', 'c', 'd', 'e'].includes(w);
-    const inputWords = normalizedInput.split(' ').filter(isMeaningful);
-    const questionWords = normalizedQuestion.split(' ').filter(isMeaningful);
+    // 3.5 INTENÇÕES DE CATEGORIA (A, B, C, D, E)
+    const isFaqCatA = /categoria a|cnh a|moto/i.test(normalizedQuestion);
+    const isFaqCatB = /categoria b|cnh b|carro/i.test(normalizedQuestion);
+    const isFaqCatC = /categoria c|cnh c|caminhao/i.test(normalizedQuestion);
+    const isFaqCatD = /categoria d|cnh d|onibus/i.test(normalizedQuestion);
+    const isFaqCatE = /categoria e|cnh e|carreta/i.test(normalizedQuestion);
+
+    if (hasCatAIntent) {
+      if (isFaqCatA) score += 250;
+      else if (isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE) score -= 150;
+    }
+    if (hasCatBIntent) {
+      if (isFaqCatB) score += 250;
+      else if (isFaqCatA || isFaqCatC || isFaqCatD || isFaqCatE) score -= 150;
+    }
+    if (hasCatCIntent) {
+      if (isFaqCatC) score += 250;
+      else if (isFaqCatA || isFaqCatB || isFaqCatD || isFaqCatE) score -= 150;
+    }
+    if (hasCatDIntent) {
+      if (isFaqCatD) score += 250;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatE) score -= 150;
+    }
+    if (hasCatEIntent) {
+      if (isFaqCatE) score += 250;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD) score -= 150;
+    }
+
+    // 3.6 INTENÇÃO: CNH FÍSICA
+    const isFaqFisica = /fisica|impressa|papel/i.test(normalizedQuestion);
+    if (hasFisicaIntent && isFaqFisica) {
+      score += 250;
+    } else if (hasFisicaIntent && !isFaqFisica && /digital/i.test(normalizedQuestion)) {
+      score -= 100;
+    }
+
+    // 3.7 INTENÇÃO: DOCUMENTOS
+    const isFaqDocumentos = /documentos|documentacao/i.test(normalizedQuestion);
+    if (hasDocumentosIntent && isFaqDocumentos) {
+      score += 250;
+    }
+
+    // 3.8 Palavras em comum SEM STOPWORDS (evita que 'da', 'de', 'para' gerem matches falsos)
+    const filterTokens = (w: string) => !PT_STOPWORDS.has(w) && w.length >= 2;
+    const inputWords = normalizedInput.split(' ').filter(filterTokens);
+    const questionWords = normalizedQuestion.split(' ').filter(filterTokens);
 
     let commonCount = 0;
     for (const iw of inputWords) {
@@ -220,18 +276,7 @@ export async function generateAIWhatsAppResponse(
       score += (commonCount / Math.max(inputWords.length, questionWords.length)) * 50;
     }
 
-    // 3.6 Grupos de Sinônimos (preço, prazo, legitimidade, documentos)
-    for (const group of Object.values(SYNONYM_GROUPS)) {
-      const hasInputGroup = inputWords.some((w) => group.includes(w)) || group.some((g) => normalizedInput.includes(g));
-      const hasQuestionGroup = questionWords.some((w) => group.includes(w)) || group.some((g) => normalizedQuestion.includes(g));
-      const hasAnswerGroup = group.some((g) => normalizedAnswer.includes(g));
-
-      if (hasInputGroup && (hasQuestionGroup || hasAnswerGroup)) {
-        score += 40;
-      }
-    }
-
-    if (score > highestScore && score >= 25) {
+    if (score > highestScore && score >= 35) {
       highestScore = score;
       bestFaqMatch = faq;
     }
@@ -248,10 +293,17 @@ export async function generateAIWhatsAppResponse(
     };
   }
 
-  // Se houve match com FAQ acima do limiar, já entrega a resposta oficial formatada com carinho!
+  // Se houve match com FAQ acima do limiar
   if (bestFaqMatch && highestScore >= 35) {
+    let finalAnswer = formatAnswerPolitely(bestFaqMatch);
+
+    // Se o cliente cumprimentou na mesma mensagem (ex: "Boa noite, é quente?"), responde gentilmente com a saudação!
+    if (detectedGreeting && !finalAnswer.toLowerCase().startsWith(detectedGreeting.toLowerCase())) {
+      finalAnswer = `${detectedGreeting}! ${finalAnswer}`;
+    }
+
     return {
-      text: formatAnswerPolitely(bestFaqMatch),
+      text: finalAnswer,
       matchedFaq: bestFaqMatch,
       mediaToSend,
       confidence: Math.min(100, Math.round(highestScore)),
@@ -319,8 +371,9 @@ NUNCA diga que é robô ou IA.
   }
 
   // Fallback acolhedor e prestativo
+  const greetingToUse = detectedGreeting || timeGreeting;
   return {
-    text: `Olá! ${timeGreeting}! Tudo bem? Me conta certinho: você precisa de CNH Categoria A (moto), B (carro) ou renovação? Já te passo os valores e detalhes na hora! 😊`,
+    text: `Olá! ${greetingToUse}! Tudo bem? Me conta certinho: você precisa de CNH Categoria A (moto), B (carro) ou C (caminhão)? Já te passo os valores e detalhes na hora! 😊`,
     confidence: 60,
   };
 }
