@@ -28,8 +28,8 @@ export async function sendZApiText(
 
   const endpoints = isOmni
     ? [
-        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-text`,
         `https://api.omni.z-api.io/v1/channels/${instanceId}/messages`,
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-text`,
         `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`,
       ]
     : [
@@ -98,8 +98,8 @@ export async function sendZApiImage(
 
   const endpoints = isOmni
     ? [
-        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-image`,
         `https://api.omni.z-api.io/v1/channels/${instanceId}/messages`,
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-image`,
         `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`,
       ]
     : [
