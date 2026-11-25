@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { SystemSettings } from '@/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 let memorySettings: SystemSettings = {
   id: '00000000-0000-0000-0000-000000000001',
   company_name: 'Assessoria Nacional CNH & Documentos',

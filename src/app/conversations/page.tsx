@@ -46,7 +46,10 @@ export default function ConversationsPage() {
 
   useEffect(() => {
     fetchConversations();
-  }, []);
+    // Atualização em tempo real das conversas a cada 3 segundos
+    const interval = setInterval(fetchConversations, 3000);
+    return () => clearInterval(interval);
+  }, [selectedConv?.id]);
 
   const handleTogglePause = async () => {
     if (!selectedConv) return;

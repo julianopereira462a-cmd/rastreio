@@ -3,6 +3,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendZApiText, sendZApiImage } from '@/lib/zapi';
 import { Conversation, Message } from '@/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Mock realista inicial para demonstração caso banco esteja vazio
 let memoryConversations: Array<Conversation & { messages: Message[] }> = [];
 

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { FAQ } from '@/types';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 // Mock de memória para quando o Supabase ainda não estiver conectado em desenvolvimento
 let memoryFaqs: FAQ[] = [
   {
