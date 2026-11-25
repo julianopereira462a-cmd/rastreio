@@ -55,6 +55,7 @@ export async function GET() {
     const latencyMs = Date.now() - startTime;
 
     return NextResponse.json({
+      deploy_version: 'v2.1_conversas_chat',
       connected: true,
       configured: true,
       latencyMs,

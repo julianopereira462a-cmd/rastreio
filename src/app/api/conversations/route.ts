@@ -11,22 +11,31 @@ let memoryConversations: Array<Conversation & { messages: Message[] }> = [];
 
 export async function GET() {
   if (isSupabaseConfigured()) {
-    const { data, error } = await supabaseAdmin
-      .from('conversations')
-      .select('*, contact:contacts(*), messages:messages(*)')
-      .order('last_message_at', { ascending: false });
+    try {
+      const { data: convs, error } = await supabaseAdmin
+        .from('conversations')
+        .select('*, contact:contacts(*)')
+        .order('last_message_at', { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      const formatted = data.map((conv) => ({
-        ...conv,
-        messages: Array.isArray(conv.messages)
-          ? conv.messages.sort(
-              (a: any, b: any) =>
-                new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-            )
-          : [],
-      }));
-      return NextResponse.json(formatted);
+      if (!error && convs && convs.length > 0) {
+        const convIds = convs.map((c) => c.id);
+        const { data: allMessages } = await supabaseAdmin
+          .from('messages')
+          .select('*')
+          .in('conversation_id', convIds)
+          .order('created_at', { ascending: true });
+
+        const formatted = convs.map((c) => ({
+          ...c,
+          messages: allMessages
+            ? allMessages.filter((m) => m.conversation_id === c.id)
+            : [],
+        }));
+
+        return NextResponse.json(formatted);
+      }
+    } catch (err) {
+      console.error('[GET /api/conversations Error]', err);
     }
   }
 
