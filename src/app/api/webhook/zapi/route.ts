@@ -7,7 +7,7 @@ import { FAQ, KnowledgeItem, Message, SystemSettings } from '@/types';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   return NextResponse.json({
     status: 'online',
     service: 'Z-API Webhook Endpoint',
@@ -15,7 +15,7 @@ export async function GET() {
   });
 }
 
-export async function HEAD() {
+export async function HEAD(req: NextRequest) {
   return new Response(null, { status: 200 });
 }
 
