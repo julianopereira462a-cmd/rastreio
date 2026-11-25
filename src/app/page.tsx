@@ -16,9 +16,15 @@ import {
   AlertCircle,
   Database,
   RefreshCw,
+  Bot,
+  Power,
+  PowerOff,
 } from 'lucide-react';
 
 export default function DashboardPage() {
+  const [botActive, setBotActive] = useState<boolean>(true);
+  const [togglingBot, setTogglingBot] = useState<boolean>(false);
+
   const [stats, setStats] = useState({
     totalConversations: 142,
     messagesReceived: 894,
@@ -63,7 +69,35 @@ export default function DashboardPage() {
 
   useEffect(() => {
     checkDatabaseConnection();
+    fetch('/api/settings')
+      .then((r) => r.json())
+      .then((data) => {
+        if (data && typeof data.is_automation_enabled === 'boolean') {
+          setBotActive(data.is_automation_enabled);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const handleToggleBot = async () => {
+    if (togglingBot) return;
+    setTogglingBot(true);
+    const nextState = !botActive;
+    setBotActive(nextState);
+
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_automation_enabled: nextState }),
+      });
+    } catch (err) {
+      console.error(err);
+      setBotActive(!nextState);
+    } finally {
+      setTogglingBot(false);
+    }
+  };
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto w-full">
@@ -93,6 +127,73 @@ export default function DashboardPage() {
             Perguntas & Fotos
           </Link>
         </div>
+      </div>
+
+      {/* BOT ON/OFF BANNER COM BOTÃO DE ATIVAR E DESATIVAR */}
+      <div
+        className={`p-5 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+          botActive
+            ? 'bg-gradient-to-r from-emerald-50 via-teal-50/40 to-white border-emerald-300 shadow-sm'
+            : 'bg-gradient-to-r from-rose-50 via-red-50/40 to-white border-rose-300'
+        }`}
+      >
+        <div className="flex items-center gap-4">
+          <div
+            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
+              botActive
+                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-200'
+                : 'bg-rose-600 text-white shadow-md shadow-rose-200'
+            }`}
+          >
+            <Bot className="w-6 h-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold text-slate-900">
+                {botActive
+                  ? 'Robô do WhatsApp: ATIVO & Respondendo'
+                  : 'Robô do WhatsApp: PAUSADO (Silencioso)'}
+              </h2>
+              <span
+                className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full uppercase tracking-wider ${
+                  botActive
+                    ? 'bg-emerald-200 text-emerald-900'
+                    : 'bg-rose-200 text-rose-900'
+                }`}
+              >
+                {botActive ? '● Ligado' : '○ Desligado'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 mt-1">
+              {botActive
+                ? 'O atendimento automático está LIGADO. Todas as perguntas no WhatsApp são respondidas na hora.'
+                : 'O atendimento automático está PAUSADO. Nenhuma resposta é enviada pelo robô enquanto estiver desligado.'}
+            </p>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleToggleBot}
+          disabled={togglingBot}
+          className={`inline-flex items-center gap-2 font-bold text-sm px-6 py-3 rounded-xl shadow-md transition-all cursor-pointer shrink-0 ${
+            botActive
+              ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-200 hover:shadow-lg'
+              : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-200 hover:shadow-lg'
+          } ${togglingBot ? 'opacity-60 cursor-wait' : ''}`}
+        >
+          {togglingBot ? (
+            'Atualizando...'
+          ) : botActive ? (
+            <>
+              <PowerOff className="w-4 h-4" /> Desativar Robô (Pausar)
+            </>
+          ) : (
+            <>
+              <Power className="w-4 h-4" /> Ativar Robô Agora (Ligar)
+            </>
+          )}
+        </button>
       </div>
 
       {/* KPI Cards Grid */}

@@ -126,7 +126,25 @@ export async function POST(req: NextRequest) {
       if (kData) knowledgeBase = kData as KnowledgeItem[];
     }
 
-    // 7. Gerar Resposta Inteligente com o Motor Semântico & FAQs
+    // 7. Checar se a automação / robô está ativado ou pausado pelo usuário
+    if (settings.is_automation_enabled === false) {
+      if (isSupabaseConfigured()) {
+        try {
+          await supabaseAdmin.from('system_logs').insert({
+            event_type: 'webhook_received',
+            level: 'info',
+            message: 'Mensagem recebida no WhatsApp, mas o robô está DESATIVADO no painel',
+            details: { senderPhone, incomingText },
+          });
+        } catch (e) {}
+      }
+      return NextResponse.json({
+        status: 'automation_disabled',
+        message: 'Robô de atendimento desativado pelo usuário no painel.',
+      });
+    }
+
+    // 8. Gerar Resposta Inteligente com o Motor Semântico & FAQs
     const aiResult = await generateAIWhatsAppResponse({
       incomingMessage: incomingText,
       contactWaId: senderPhone,
