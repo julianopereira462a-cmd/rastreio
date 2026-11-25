@@ -22,14 +22,24 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 1. Ignorar eventos que não sejam de mensagem recebida (ex: MESSAGE_STATUS, MESSAGE_DELIVERY)
+    // 1. Ignorar apenas se for evento explícito de status (ex: MESSAGE_STATUS, MESSAGE_DELIVERY)
     if (body.event && body.event !== 'MESSAGE_RECEIVED') {
       return NextResponse.json({ status: 'ignored_event', event: body.event });
     }
 
     // 2. Validar se a mensagem foi enviada por nós mesmos ou se é de grupo
-    const isFromMe = body.fromMe || body.message?.fromMe;
-    const isGroup = body.isGroup || body.message?.isGroup || body.chat?.isGroup;
+    const isFromMe =
+      body.fromMe ||
+      body.message?.fromMe ||
+      body.message?.metadata?.from_me ||
+      body.message?.contents?.[0]?.external_information?.from_me;
+
+    const isGroup =
+      body.isGroup ||
+      body.message?.isGroup ||
+      body.message?.chat?.isGroup ||
+      body.chat?.isGroup;
+
     if (isFromMe || isGroup) {
       return NextResponse.json({ status: 'ignored_outgoing_or_group' });
     }
@@ -38,6 +48,7 @@ export async function POST(req: NextRequest) {
     const senderPhone =
       body.phone ||
       body.senderPhone ||
+      body.message?.sender?.identifier ||
       body.message?.author?.identifier ||
       body.message?.chat?.identifier ||
       body.chat?.identifier;
@@ -49,27 +60,41 @@ export async function POST(req: NextRequest) {
     // 4. Extrair Nome do Remetente
     const senderName =
       body.senderName ||
+      body.message?.sender?.name ||
       body.message?.author?.name ||
       'Cliente';
 
     // 5. Extrair Texto da Mensagem
     let incomingText = '';
-    if (typeof body.text === 'string') {
-      incomingText = body.text;
-    } else if (body.text?.message) {
-      incomingText = body.text.message;
-    } else if (body.message?.content?.body?.message) {
-      incomingText = body.message.content.body.message;
-    } else if (body.message?.content?.body?.text) {
-      incomingText = body.message.content.body.text;
-    } else if (body.message?.content?.text) {
-      incomingText = body.message.content.text;
-    } else if (body.message?.content?.body?.caption) {
-      incomingText = body.message.content.body.caption;
-    } else if (body.image?.caption) {
-      incomingText = body.image.caption;
-    } else if (body.body) {
-      incomingText = body.body;
+    if (body.message?.contents && Array.isArray(body.message.contents) && body.message.contents.length > 0) {
+      const first = body.message.contents[0];
+      if (typeof first.message === 'string') {
+        incomingText = first.message;
+      } else if (typeof first.text === 'string') {
+        incomingText = first.text;
+      } else if (first.caption) {
+        incomingText = first.caption;
+      }
+    }
+
+    if (!incomingText) {
+      if (typeof body.text === 'string') {
+        incomingText = body.text;
+      } else if (body.text?.message) {
+        incomingText = body.text.message;
+      } else if (body.message?.content?.body?.message) {
+        incomingText = body.message.content.body.message;
+      } else if (body.message?.content?.body?.text) {
+        incomingText = body.message.content.body.text;
+      } else if (body.message?.content?.text) {
+        incomingText = body.message.content.text;
+      } else if (body.message?.content?.body?.caption) {
+        incomingText = body.message.content.body.caption;
+      } else if (body.image?.caption) {
+        incomingText = body.image.caption;
+      } else if (body.body) {
+        incomingText = body.body;
+      }
     }
 
     if (!incomingText) {
@@ -113,8 +138,15 @@ export async function POST(req: NextRequest) {
     });
 
     // 8. Configuração da Z-API / Z-API Omni
+    const channelId =
+      body.channelId ||
+      body.message?.channel_id ||
+      settings.zapi_instance_id ||
+      settings.whatsapp_phone_number_id ||
+      process.env.ZAPI_INSTANCE_ID;
+
     const zapiConfig = {
-      instanceId: body.channelId || settings.zapi_instance_id || settings.whatsapp_phone_number_id || process.env.ZAPI_INSTANCE_ID,
+      instanceId: channelId,
       token: settings.zapi_token || settings.whatsapp_access_token || process.env.ZAPI_TOKEN,
       clientToken: settings.zapi_client_token || settings.whatsapp_verify_token || process.env.ZAPI_CLIENT_TOKEN,
     };
