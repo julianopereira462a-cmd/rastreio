@@ -10,9 +10,39 @@ import {
   X,
   Trash2,
   Edit2,
-  ExternalLink,
+  CheckCircle2,
 } from 'lucide-react';
 import { FAQ } from '@/types';
+
+// Otimizador de imagem no navegador (Canvas) para garantir upload leve e ultra rápido
+function compressImage(file: File, maxWidth = 1200, quality = 0.8): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const elem = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+
+        elem.width = width;
+        elem.height = height;
+        const ctx = elem.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(elem.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = (err) => reject(err);
+    };
+    reader.onerror = (err) => reject(err);
+  });
+}
 
 export default function FaqsPage() {
   const [faqs, setFaqs] = useState<FAQ[]>([]);
@@ -20,6 +50,8 @@ export default function FaqsPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingFaq, setEditingFaq] = useState<FAQ | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [successToast, setSuccessToast] = useState('');
 
   // Form State Simplificado: Apenas Pergunta, Resposta e Foto
   const [formQuestion, setFormQuestion] = useState('');
@@ -60,20 +92,22 @@ export default function FaqsPage() {
     setIsModalOpen(true);
   };
 
-  // Upload local de foto com FileReader
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Upload local de foto com compressão automática
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormMediaUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressedBase64 = await compressImage(file);
+        setFormMediaUrl(compressedBase64);
+      } catch (err) {
+        console.error('Erro ao processar imagem:', err);
+      }
     }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
 
     const payload = {
       id: editingFaq?.id,
@@ -88,23 +122,29 @@ export default function FaqsPage() {
     };
 
     try {
-      if (editingFaq) {
-        await fetch('/api/faqs', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-      } else {
-        await fetch('/api/faqs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+      const endpoint = '/api/faqs';
+      const method = editingFaq ? 'PUT' : 'POST';
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        alert('Erro ao salvar: ' + (errData?.error || 'Tente novamente'));
+        return;
       }
+
       setIsModalOpen(false);
+      setSuccessToast(editingFaq ? 'Pergunta atualizada!' : 'Pergunta cadastrada com sucesso!');
+      setTimeout(() => setSuccessToast(''), 4000);
       fetchFaqs();
-    } catch (err) {
-      console.error('Erro ao salvar:', err);
+    } catch (err: any) {
+      alert('Erro de conexão ao salvar: ' + err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -112,6 +152,8 @@ export default function FaqsPage() {
     if (!confirm('Deseja excluir esta pergunta?')) return;
     try {
       await fetch(`/api/faqs?id=${id}`, { method: 'DELETE' });
+      setSuccessToast('Pergunta removida!');
+      setTimeout(() => setSuccessToast(''), 3000);
       fetchFaqs();
     } catch (err) {
       console.error('Erro ao excluir:', err);
@@ -120,12 +162,20 @@ export default function FaqsPage() {
 
   const filteredFaqs = faqs.filter(
     (f) =>
-      f.question.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      f.answer.toLowerCase().includes(searchTerm.toLowerCase())
+      f.question?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      f.answer?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
     <div className="p-8 space-y-6 max-w-5xl mx-auto w-full">
+      {/* Toast de Sucesso */}
+      {successToast && (
+        <div className="fixed top-6 right-6 z-50 bg-emerald-600 text-white px-5 py-3 rounded-xl shadow-xl flex items-center gap-2 font-semibold text-sm animate-in fade-in slide-in-from-top-4">
+          <CheckCircle2 className="w-5 h-5" />
+          {successToast}
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
@@ -160,7 +210,7 @@ export default function FaqsPage() {
       {/* Lista de Perguntas */}
       <div className="grid grid-cols-1 gap-4">
         {loading ? (
-          <div className="text-center py-12 text-slate-500 text-sm">Carregando...</div>
+          <div className="text-center py-12 text-slate-500 text-sm">Carregando perguntas da nuvem...</div>
         ) : filteredFaqs.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-xl border border-slate-200 p-8">
             <HelpCircle className="w-12 h-12 text-slate-300 mx-auto mb-3" />
@@ -177,7 +227,6 @@ export default function FaqsPage() {
             >
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="space-y-3 flex-1">
-                  {/* Pergunta */}
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md">
                       Pergunta do Cliente
@@ -187,7 +236,6 @@ export default function FaqsPage() {
                     </h3>
                   </div>
 
-                  {/* Resposta */}
                   <div>
                     <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                       Resposta Automática no WhatsApp
@@ -197,7 +245,6 @@ export default function FaqsPage() {
                     </p>
                   </div>
 
-                  {/* Foto Anexada */}
                   {faq.media_url && (
                     <div className="pt-1 flex items-center gap-3">
                       <img
@@ -215,7 +262,6 @@ export default function FaqsPage() {
                   )}
                 </div>
 
-                {/* Ações */}
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => openModal(faq)}
@@ -238,11 +284,10 @@ export default function FaqsPage() {
         )}
       </div>
 
-      {/* Modal Simplificado: APENAS PERGUNTA, RESPOSTA E FOTO */}
+      {/* Modal Simplificado */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            {/* Modal Header */}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
               <h2 className="text-lg font-bold text-slate-900">
                 {editingFaq ? 'Editar Pergunta' : 'Nova Pergunta para o WhatsApp'}
@@ -255,9 +300,7 @@ export default function FaqsPage() {
               </button>
             </div>
 
-            {/* Form */}
             <form onSubmit={handleSave} className="p-6 space-y-5">
-              {/* 1. Pergunta */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Pergunta do Cliente *
@@ -272,7 +315,6 @@ export default function FaqsPage() {
                 />
               </div>
 
-              {/* 2. Resposta */}
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                   Resposta que será enviada no WhatsApp *
@@ -287,7 +329,6 @@ export default function FaqsPage() {
                 />
               </div>
 
-              {/* 3. Upload de Foto / Imagem */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
                   Foto ou Imagem (Opcional)
@@ -316,13 +357,13 @@ export default function FaqsPage() {
                   <div className="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-xl p-5 text-center transition-colors bg-slate-50/50">
                     <input
                       type="file"
-                      id="photo-upload-desktop"
+                      id="photo-upload-comp"
                       accept="image/*"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
                     <label
-                      htmlFor="photo-upload-desktop"
+                      htmlFor="photo-upload-comp"
                       className="cursor-pointer flex flex-col items-center justify-center space-y-2"
                     >
                       <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center">
@@ -331,12 +372,11 @@ export default function FaqsPage() {
                       <div className="text-sm font-semibold text-slate-800">
                         Clique aqui para escolher uma foto do seu computador
                       </div>
-                      <p className="text-xs text-slate-400">PNG, JPG, JPEG ou WebP</p>
+                      <p className="text-xs text-slate-400">PNG, JPG ou JPEG (otimizada automaticamente)</p>
                     </label>
                   </div>
                 )}
 
-                {/* Opção alternativa de colar link de foto se quiser */}
                 <div className="pt-1">
                   <input
                     type="url"
@@ -348,20 +388,21 @@ export default function FaqsPage() {
                 </div>
               </div>
 
-              {/* Botões do Rodapé */}
               <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors font-medium"
+                  disabled={isSaving}
+                  className="px-4 py-2.5 text-sm text-slate-600 hover:bg-slate-100 rounded-xl transition-colors font-medium disabled:opacity-50"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="px-6 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-200 transition-colors"
+                  disabled={isSaving}
+                  className="px-6 py-2.5 text-sm bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md shadow-emerald-200 transition-colors disabled:opacity-50 flex items-center gap-2"
                 >
-                  Salvar Pergunta
+                  {isSaving ? 'Salvando na Nuvem...' : 'Salvar Pergunta'}
                 </button>
               </div>
             </form>

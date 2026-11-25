@@ -17,6 +17,7 @@ import { SystemSettings } from '@/types';
 export default function SettingsPage() {
   const [settings, setSettings] = useState<SystemSettings | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   useEffect(() => {
@@ -26,23 +27,36 @@ export default function SettingsPage() {
         setSettings(data);
         setLoading(false);
       })
-      .catch((err) => console.error(err));
+      .catch((err) => {
+        console.error(err);
+        setLoading(false);
+      });
   }, []);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!settings) return;
+    setIsSaving(true);
 
     try {
-      await fetch('/api/settings', {
+      const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
       });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        alert('Erro ao salvar configurações: ' + (errData?.error || 'Erro desconhecido'));
+        return;
+      }
+
       setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 3000);
-    } catch (err) {
-      console.error(err);
+      setTimeout(() => setSavedSuccess(false), 4000);
+    } catch (err: any) {
+      alert('Erro de conexão: ' + err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -62,8 +76,8 @@ export default function SettingsPage() {
           </p>
         </div>
         {savedSuccess && (
-          <div className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-100 text-emerald-800 px-3 py-1.5 rounded-lg animate-fade-in">
-            <CheckCircle2 className="w-4 h-4" /> Configurações salvas!
+          <div className="flex items-center gap-1.5 text-xs font-semibold bg-emerald-100 text-emerald-800 px-3.5 py-2 rounded-xl animate-in fade-in shadow-sm">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600" /> Configurações salvas no Supabase!
           </div>
         )}
       </div>
@@ -85,7 +99,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={settings.company_name}
+                value={settings.company_name || ''}
                 onChange={(e) => setSettings({ ...settings, company_name: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
               />
@@ -97,7 +111,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={settings.ai_tone}
+                value={settings.ai_tone || ''}
                 onChange={(e) => setSettings({ ...settings, ai_tone: e.target.value })}
                 placeholder="Ex: simpático, acolhedor, profissional e direto"
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
@@ -111,7 +125,7 @@ export default function SettingsPage() {
             </label>
             <textarea
               rows={3}
-              value={settings.ai_persona}
+              value={settings.ai_persona || ''}
               onChange={(e) => setSettings({ ...settings, ai_persona: e.target.value })}
               className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
             />
@@ -127,7 +141,7 @@ export default function SettingsPage() {
               </label>
               <textarea
                 rows={3}
-                value={settings.forbidden_topics}
+                value={settings.forbidden_topics || ''}
                 onChange={(e) => setSettings({ ...settings, forbidden_topics: e.target.value })}
                 placeholder="Ex: Não prometer aprovação imediata, não prometer descontos extras..."
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
@@ -140,7 +154,7 @@ export default function SettingsPage() {
               </label>
               <textarea
                 rows={3}
-                value={settings.escalation_instructions}
+                value={settings.escalation_instructions || ''}
                 onChange={(e) => setSettings({ ...settings, escalation_instructions: e.target.value })}
                 placeholder="Ex: Dizer que um consultor vai continuar o atendimento..."
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-emerald-500"
@@ -167,7 +181,7 @@ export default function SettingsPage() {
                 type="number"
                 min={1}
                 max={15}
-                value={settings.response_delay_seconds}
+                value={settings.response_delay_seconds || 4}
                 onChange={(e) =>
                   setSettings({ ...settings, response_delay_seconds: Number(e.target.value) })
                 }
@@ -182,7 +196,7 @@ export default function SettingsPage() {
               <label className="flex items-center gap-3 cursor-pointer mt-2">
                 <input
                   type="checkbox"
-                  checked={settings.typing_simulation_enabled}
+                  checked={settings.typing_simulation_enabled ?? true}
                   onChange={(e) =>
                     setSettings({ ...settings, typing_simulation_enabled: e.target.checked })
                   }
@@ -199,92 +213,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* 3. Integração WhatsApp Cloud API (Meta Oficial) */}
-        <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-sm space-y-4">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div className="flex items-center gap-2">
-              <Key className="w-5 h-5 text-emerald-600" />
-              <h2 className="text-base font-bold text-slate-900">
-                Credenciais WhatsApp Cloud API (Meta Developers)
-              </h2>
-            </div>
-            <a
-              href="https://developers.facebook.com"
-              target="_blank"
-              rel="noreferrer"
-              className="text-xs font-semibold text-emerald-600 hover:underline flex items-center gap-1"
-            >
-              Meta App Dashboard <ExternalLink className="w-3 h-3" />
-            </a>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Phone Number ID
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: 104593849201948"
-                value={settings.whatsapp_phone_number_id}
-                onChange={(e) =>
-                  setSettings({ ...settings, whatsapp_phone_number_id: e.target.value })
-                }
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                WABA ID (WhatsApp Business Account ID)
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: 928374619283746"
-                value={settings.whatsapp_waba_id}
-                onChange={(e) => setSettings({ ...settings, whatsapp_waba_id: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Permanent Access Token (Meta Graph API)
-              </label>
-              <input
-                type="password"
-                placeholder="EAAG..."
-                value={settings.whatsapp_access_token}
-                onChange={(e) =>
-                  setSettings({ ...settings, whatsapp_access_token: e.target.value })
-                }
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none font-mono"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-                Webhook Verify Token (Configurado no Meta Developers)
-              </label>
-              <input
-                type="text"
-                value={settings.whatsapp_verify_token}
-                onChange={(e) =>
-                  setSettings({ ...settings, whatsapp_verify_token: e.target.value })
-                }
-                className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none font-mono"
-              />
-              <p className="text-xs text-slate-400 mt-1">
-                URL do Webhook para colar na Meta:{' '}
-                <code className="text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded">
-                  https://seu-dominio.vercel.app/api/webhook/whatsapp
-                </code>
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. Provedor de Inteligência Artificial */}
+        {/* 3. Provedor de Inteligência Artificial */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-sm space-y-4">
           <div className="flex items-center gap-2 border-b border-slate-100 pb-3">
             <Sparkles className="w-5 h-5 text-purple-600" />
@@ -299,7 +228,7 @@ export default function SettingsPage() {
                 Provedor
               </label>
               <select
-                value={settings.ai_provider}
+                value={settings.ai_provider || 'gemini'}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
@@ -326,7 +255,7 @@ export default function SettingsPage() {
               </label>
               <input
                 type="text"
-                value={settings.ai_model_name}
+                value={settings.ai_model_name || 'gemini-1.5-flash'}
                 onChange={(e) => setSettings({ ...settings, ai_model_name: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none"
               />
@@ -337,9 +266,9 @@ export default function SettingsPage() {
                 Chave de API (API Key)
               </label>
               <input
-                type="password"
-                placeholder="AIzaSy... ou sk-..."
-                value={settings.ai_api_key}
+                type="text"
+                placeholder="AIzaSy... ou AQ.Ab8..."
+                value={settings.ai_api_key || ''}
                 onChange={(e) => setSettings({ ...settings, ai_api_key: e.target.value })}
                 className="w-full px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none font-mono"
               />
@@ -351,10 +280,11 @@ export default function SettingsPage() {
         <div className="flex justify-end pt-2">
           <button
             type="submit"
-            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-md shadow-emerald-200 transition-colors"
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-6 py-3 rounded-xl shadow-md shadow-emerald-200 transition-colors disabled:opacity-50"
           >
             <Save className="w-4 h-4" />
-            Salvar Todas as Configurações
+            {isSaving ? 'Salvando no Banco...' : 'Salvar Todas as Configurações'}
           </button>
         </div>
       </form>
