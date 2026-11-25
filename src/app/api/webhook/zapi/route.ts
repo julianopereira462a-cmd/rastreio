@@ -8,24 +8,42 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // 1. Validar se é mensagem válida do WhatsApp
-    // Ignorar mensagens de grupos ou enviadas por você mesmo
-    if (body.fromMe || body.isGroup) {
+    // 1. Validar se a mensagem foi enviada por nós mesmos ou se é de grupo
+    const isFromMe = body.fromMe || body.message?.fromMe;
+    const isGroup = body.isGroup || body.message?.isGroup || body.chat?.isGroup;
+    if (isFromMe || isGroup) {
       return NextResponse.json({ status: 'ignored_outgoing_or_group' });
     }
 
-    const senderPhone = body.phone || body.senderPhone;
+    // 2. Extrair Telefone do Remetente (Suporte a Z-API Clássica & Z-API Omni)
+    const senderPhone =
+      body.phone ||
+      body.senderPhone ||
+      body.message?.author?.identifier ||
+      body.message?.chat?.identifier ||
+      body.chat?.identifier;
+
     if (!senderPhone) {
       return NextResponse.json({ status: 'no_phone' });
     }
 
-    // Extrair texto da mensagem
+    // 3. Extrair Nome do Remetente
+    const senderName =
+      body.senderName ||
+      body.message?.author?.name ||
+      'Cliente';
+
+    // 4. Extrair Texto da Mensagem
     let incomingText = '';
     if (typeof body.text === 'string') {
       incomingText = body.text;
-    } else if (body.text && body.text.message) {
+    } else if (body.text?.message) {
       incomingText = body.text.message;
-    } else if (body.image && body.image.caption) {
+    } else if (body.message?.content?.body?.message) {
+      incomingText = body.message.content.body.message;
+    } else if (body.message?.content?.body?.caption) {
+      incomingText = body.message.content.body.caption;
+    } else if (body.image?.caption) {
       incomingText = body.image.caption;
     } else if (body.body) {
       incomingText = body.body;
@@ -35,7 +53,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: 'empty_text' });
     }
 
-    // 2. Carregar Configurações e Perguntas do Banco
+    // 5. Carregar Configurações e FAQs do Banco de Dados
     let settings: any = {
       company_name: 'Minha Empresa',
       ai_tone: 'amigável e rápido',
@@ -60,25 +78,25 @@ export async function POST(req: NextRequest) {
       if (kData) knowledgeBase = kData as KnowledgeItem[];
     }
 
-    // 3. Gerar Resposta Inteligente com o Motor Semântico
+    // 6. Gerar Resposta Inteligente com o Motor Semântico & FAQs
     const aiResult = await generateAIWhatsAppResponse({
       incomingMessage: incomingText,
       contactWaId: senderPhone,
-      contactName: body.senderName || 'Cliente',
+      contactName: senderName,
       conversationHistory: [],
       settings,
       availableFaqs: faqs,
       knowledgeBase,
     });
 
-    // 4. Configuração Z-API (lida das configurações ou variáveis)
+    // 7. Configuração da Z-API / Z-API Omni
     const zapiConfig = {
       instanceId: settings.zapi_instance_id || settings.whatsapp_phone_number_id || process.env.ZAPI_INSTANCE_ID,
       token: settings.zapi_token || settings.whatsapp_access_token || process.env.ZAPI_TOKEN,
       clientToken: settings.zapi_client_token || settings.whatsapp_verify_token || process.env.ZAPI_CLIENT_TOKEN,
     };
 
-    // 5. Enviar Foto se houver mídia vinculada no FAQ
+    // 8. Enviar Foto se houver mídia vinculada no FAQ
     if (aiResult.mediaToSend && aiResult.mediaToSend.url) {
       try {
         await sendZApiImage(
@@ -92,7 +110,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 6. Enviar Resposta de Texto via Z-API
+    // 9. Enviar Resposta de Texto via Z-API
     if (aiResult.text) {
       await sendZApiText(senderPhone, aiResult.text, zapiConfig);
     }

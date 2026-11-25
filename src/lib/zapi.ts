@@ -1,5 +1,5 @@
 /**
- * Integração Oficial Z-API (Conexão WhatsApp por QR Code)
+ * Integração Oficial Z-API (Suporte Completo Z-API Clássica & Z-API Omni)
  */
 
 interface ZApiConfig {
@@ -24,32 +24,59 @@ export async function sendZApiText(
 
   // Sanitizar telefone (apenas números)
   const cleanPhone = toPhone.replace(/\D/g, '');
+  const isOmni = instanceId.length >= 24;
 
-  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`;
+  const endpoints = isOmni
+    ? [
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-text`,
+        `https://api.omni.z-api.io/v1/channels/${instanceId}/messages`,
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`,
+      ]
+    : [
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/send-text`,
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-text`,
+      ];
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
   };
   if (clientToken) {
     headers['Client-Token'] = clientToken;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      phone: cleanPhone,
-      message,
-    }),
-  });
+  for (const url of endpoints) {
+    try {
+      const isOmniDirect = url.includes('/v1/channels');
+      const body = isOmniDirect
+        ? {
+            recipient: { identifier: cleanPhone },
+            content: {
+              type: 'TEXT',
+              body: { message },
+            },
+          }
+        : {
+            phone: cleanPhone,
+            message,
+          };
 
-  const data = await response.json();
-  if (!response.ok) {
-    console.error('[Z-API Error]', data);
-    throw new Error(data?.message || 'Falha ao enviar mensagem pela Z-API');
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        return { success: true, data };
+      }
+    } catch (err) {
+      console.warn(`[Z-API] Falha no endpoint ${url}, tentando próximo...`);
+    }
   }
 
-  return { success: true, data };
+  return { success: false };
 }
 
 export async function sendZApiImage(
@@ -67,25 +94,61 @@ export async function sendZApiImage(
   }
 
   const cleanPhone = toPhone.replace(/\D/g, '');
-  const url = `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`;
+  const isOmni = instanceId.length >= 24;
+
+  const endpoints = isOmni
+    ? [
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-image`,
+        `https://api.omni.z-api.io/v1/channels/${instanceId}/messages`,
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`,
+      ]
+    : [
+        `https://api.z-api.io/instances/${instanceId}/token/${token}/send-image`,
+        `https://zapi.omni.z-api.io/channels/${instanceId}/token/${token}/send-image`,
+      ];
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
   };
   if (clientToken) {
     headers['Client-Token'] = clientToken;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      phone: cleanPhone,
-      image: imageUrl,
-      caption: caption || '',
-    }),
-  });
+  for (const url of endpoints) {
+    try {
+      const isOmniDirect = url.includes('/v1/channels');
+      const body = isOmniDirect
+        ? {
+            recipient: { identifier: cleanPhone },
+            content: {
+              type: 'IMAGE',
+              body: {
+                url: imageUrl,
+                caption: caption || '',
+              },
+            },
+          }
+        : {
+            phone: cleanPhone,
+            image: imageUrl,
+            caption: caption || '',
+          };
 
-  const data = await response.json();
-  return { success: response.ok, data };
+      const response = await fetch(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+      });
+
+      if (response.ok) {
+        const data = await response.json().catch(() => ({}));
+        return { success: true, data };
+      }
+    } catch (err) {
+      console.warn(`[Z-API] Falha no envio de imagem para ${url}`);
+    }
+  }
+
+  return { success: false };
 }
