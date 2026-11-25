@@ -50,8 +50,17 @@ const SYNONYM_GROUPS: Record<string, string[]> = {
   ]
 };
 
+// Obter saudação correta pelo fuso horário de Brasília (UTC-3)
+function getGreetingByHour(): string {
+  const now = new Date();
+  const brHour = (now.getUTCHours() - 3 + 24) % 24;
+  if (brHour >= 5 && brHour < 12) return 'Bom dia';
+  if (brHour >= 12 && brHour < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
 /**
- * Motor de Inteligência Artificial Contextual e Semântico para WhatsApp
+ * Motor de Inteligência Artificial Contextual, Empático e Gentil para WhatsApp
  */
 export async function generateAIWhatsAppResponse(
   input: GenerateResponseInput
@@ -66,8 +75,55 @@ export async function generateAIWhatsAppResponse(
   } = input;
 
   const normalizedInput = normalizeBrText(incomingMessage);
+  const timeGreeting = getGreetingByHour();
 
-  // 1. MATCHING SEMÂNTICO EXPERTO E ÁGIL
+  // 1. TRATAMENTO ULTRA GENTIL PARA SAUDAÇÕES (Cumprimentos)
+  const isGreeting = [
+    'boa noite', 'boa noitre', 'boanoite',
+    'bom dia', 'bomdia',
+    'boa tarde', 'boatarde',
+    'ola', 'olá', 'oi', 'oii', 'oiii',
+    'opa', 'e ai', 'eai',
+    'tudo bem', 'td bem', 'tudo bom', 'td bom',
+    'como vai', 'fala'
+  ].some((g) => normalizedInput === g || normalizedInput.startsWith(g + ' ') || normalizedInput.endsWith(' ' + g));
+
+  const hasSpecificDoubt = Object.values(SYNONYM_GROUPS).some((group) =>
+    group.some((w) => normalizedInput.includes(w))
+  );
+
+  // Se a pessoa apenas saudou (ex: "boa noite", "olá", "bom dia"), responde com carinho, educação e presteza
+  if (isGreeting && !hasSpecificDoubt) {
+    let saudacao = timeGreeting;
+    if (normalizedInput.includes('noite') || normalizedInput.includes('noitre')) saudacao = 'Boa noite';
+    else if (normalizedInput.includes('tarde')) saudacao = 'Boa tarde';
+    else if (normalizedInput.includes('dia')) saudacao = 'Bom dia';
+
+    const greetingsResponses = [
+      `Olá! ${saudacao}! Tudo bem com você? Como posso te ajudar hoje? 😊`,
+      `${saudacao}! Seja muito bem-vindo! Em que posso te ajudar hoje?`,
+      `Olá, ${saudacao}! Tudo bem? Me conta como posso te orientar!`,
+    ];
+
+    return {
+      text: greetingsResponses[Math.floor(Math.random() * greetingsResponses.length)],
+      confidence: 100,
+    };
+  }
+
+  // 2. TRATAMENTO PARA AGRADECIMENTOS
+  const isGratitude = [
+    'obrigado', 'obrigada', 'valeu', 'show', 'agradeco', 'obg', 'blz', 'beleza', 'perfeito', 'otimo'
+  ].some((ag) => normalizedInput === ag || normalizedInput.startsWith(ag + ' '));
+
+  if (isGratitude && !hasSpecificDoubt) {
+    return {
+      text: `Por nada! Qualquer outra dúvida ou se precisar de algo mais, estou sempre por aqui! Conte comigo! 👍`,
+      confidence: 100,
+    };
+  }
+
+  // 3. MATCHING SEMÂNTICO EXPERTO E ÁGIL COM OS FAQS
   let bestFaqMatch: FAQ | null = null;
   let highestScore = 0;
 
@@ -78,12 +134,12 @@ export async function generateAIWhatsAppResponse(
     const normalizedQuestion = normalizeBrText(faq.question);
     const normalizedAnswer = normalizeBrText(faq.answer);
 
-    // 1.1 Match direto
+    // Match direto
     if (normalizedInput === normalizedQuestion || normalizedInput.includes(normalizedQuestion)) {
       score += 60;
     }
 
-    // 1.2 Palavras em comum com peso semântico
+    // Palavras em comum
     const inputWords = normalizedInput.split(' ').filter((w) => w.length > 2);
     const questionWords = normalizedQuestion.split(' ').filter((w) => w.length > 2);
 
@@ -98,14 +154,14 @@ export async function generateAIWhatsAppResponse(
       score += (commonWordsCount / questionWords.length) * 45;
     }
 
-    // 1.3 Detecção Inteligente de Sinônimos (Ex: "é verdadeira?" -> "é original?")
+    // Detecção Inteligente de Sinônimos
     for (const group of Object.values(SYNONYM_GROUPS)) {
       const hasInputGroup = inputWords.some((w) => group.includes(w));
       const hasQuestionGroup = questionWords.some((w) => group.includes(w));
       const hasAnswerGroup = group.some((g) => normalizedAnswer.includes(g));
 
       if (hasInputGroup && (hasQuestionGroup || hasAnswerGroup)) {
-        score += 35; // Forte impulso semântico por intenção equivalente
+        score += 35;
       }
     }
 
@@ -126,7 +182,17 @@ export async function generateAIWhatsAppResponse(
     };
   }
 
-  // 2. CONSTRUÇÃO DO CONTEXTO RELEVANTE (RAG)
+  // Se houve match com FAQ de alta confiança, já entrega a resposta oficial cadastrada com toda gentileza!
+  if (bestFaqMatch && highestScore >= 35) {
+    return {
+      text: bestFaqMatch.answer,
+      matchedFaq: bestFaqMatch,
+      mediaToSend,
+      confidence: Math.min(100, Math.round(highestScore)),
+    };
+  }
+
+  // 4. CONSTRUÇÃO DO CONTEXTO RAG PARA CASOS COMPLEXOS
   const faqContext = availableFaqs
     .filter((f) => f.is_active)
     .map(
@@ -136,34 +202,26 @@ export async function generateAIWhatsAppResponse(
     .join('\n\n');
 
   const historyText = conversationHistory
-    .slice(-8)
+    .slice(-6)
     .map((msg) => {
       const sender = msg.sender_type === 'contact' ? 'Cliente' : 'Atendente';
       return `${sender}: ${msg.content}`;
     })
     .join('\n');
 
-  // 3. SYSTEM PROMPT DE ALTA INTELIGÊNCIA E EMPATIA
   const systemPrompt = `
-Você é o atendente de WhatsApp da empresa "${settings.company_name}".
-Seu foco é atender com rapidez, máxima simpatia, naturalidade e total segurança.
+Você é o atendente de WhatsApp da empresa "${settings.company_name || 'nossa equipe'}".
+Seu tom é EXTREMAMENTE gentil, acolhedor, profissional e prestativo.
+- Sempre cumprimente com educação (ex: "Olá! Tudo bem?").
+- Responda de forma clara, natural e humana (estilo WhatsApp do Brasil).
+- NUNCA diga que é robô ou IA.
+- Use as respostas oficiais cadastradas sempre que o assunto coincidir.
 
-COMO ENTENDER O CLIENTE COM ESPERTEZA:
-- O cliente pode perguntar de várias maneiras diferentes usando gírias ou sinônimos:
-  Exemplo: "é verdadeira?", "é original?", "é legítima?", "é quente?", "funciona mesmo?", "é golpe?", "posso confiar?".
-  Todas essas perguntas têm a MESMA intenção de checar a autenticidade e segurança.
-- Identifique o real significado da pergunta do cliente e responda com a RESPOSTA CADASTRADA correspondente.
-- NUNCA diga frases como "sou um atendente virtual", "sou uma IA" ou "sou um robô". Fale como uma pessoa brasileira real no WhatsApp.
-- Seja ágil, direto e seguro nas respostas. Use parágrafos curtos e quebras de linha agradáveis.
-- Se o cliente perguntar algo sobre preço, prazos ou garantias, responda ESTRITAMENTE com base no que está cadastrado. Nunca invente valores.
-
-PERGUNTAS E RESPOSTAS CADASTRADAS NO SISTEMA:
-${faqContext || 'Nenhuma pergunta cadastrada ainda.'}
-
-${bestFaqMatch ? `INTENÇÃO DETECTADA PELO SISTEMA: A dúvida do cliente corresponde à pergunta "${bestFaqMatch.question}". Use como base a resposta oficial: "${bestFaqMatch.answer}".` : ''}
+PERGUNTAS E RESPOSTAS CADASTRADAS:
+${faqContext || 'Nenhuma'}
 `;
 
-  // 4. CHAMADA AO MODELO DE IA
+  // 5. TENTATIVA COM IA OU FALLBACK SUPER GENTIL
   try {
     const aiResponseText = await callLLM({
       provider: settings.ai_provider,
@@ -175,34 +233,37 @@ ${bestFaqMatch ? `INTENÇÃO DETECTADA PELO SISTEMA: A dúvida do cliente corres
       clientName: contactName,
     });
 
-    return {
-      text: aiResponseText,
-      matchedFaq: bestFaqMatch || undefined,
-      mediaToSend,
-      confidence: highestScore > 0 ? Math.min(100, Math.round(highestScore)) : 80,
-    };
-  } catch (error: any) {
-    console.error('[AI Engine Error]', error);
-
-    // Fallback inteligente: se detectou a intenção semântica, usa a resposta cadastrada diretamente!
-    if (bestFaqMatch) {
+    if (aiResponseText && aiResponseText.length > 3) {
       return {
-        text: bestFaqMatch.answer,
-        matchedFaq: bestFaqMatch,
+        text: aiResponseText,
+        matchedFaq: bestFaqMatch || undefined,
         mediaToSend,
-        confidence: 90,
+        confidence: 85,
       };
     }
+  } catch (error: any) {
+    console.warn('[AI Engine Error - Usando Fallback Gentil]');
+  }
 
+  // Fallback se houver algum FAQ detectado
+  if (bestFaqMatch) {
     return {
-      text: `Entendi perfeitamente sua dúvida! Me conta um pouco mais para eu te orientar certinho.`,
-      confidence: 50,
+      text: bestFaqMatch.answer,
+      matchedFaq: bestFaqMatch,
+      mediaToSend,
+      confidence: 90,
     };
   }
+
+  // Fallback humanizado e ultra gentil
+  return {
+    text: `Olá! ${timeGreeting}! Tudo bem? Seja muito bem-vindo! Me conta certinho o que você precisa que eu já te oriento na hora! 😊`,
+    confidence: 60,
+  };
 }
 
 /**
- * Chamada unificada para Gemini e OpenAI via API REST
+ * Chamada com suporte a modelos Gemini e OpenAI
  */
 async function callLLM({
   provider,
@@ -222,47 +283,59 @@ async function callLLM({
   clientName?: string;
 }): Promise<string> {
   const promptUser = `
-Histórico recente da conversa:
-${historyText || '(Início da conversa)'}
+Histórico da conversa:
+${historyText || '(Início)'}
 
 Cliente (${clientName || 'Novo Contato'}): ${clientMessage}
-
 Atendente:`;
 
   if (!apiKey) {
-    return `Sim, com certeza! Todos os nossos processos são 100% legítimos e oficiais, com acompanhamento direto até a conclusão. Como posso te orientar nos próximos passos?`;
+    return '';
   }
 
-  // 1. Google Gemini API
+  // Tentativa Gemini com timeout de 5 segundos
   if (provider === 'gemini' || !provider) {
-    const geminiModel = model || 'gemini-1.5-flash';
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+    const modelsToTry = [model, 'gemini-2.5-flash', 'gemini-flash-latest'].filter(Boolean);
 
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: 'user',
-            parts: [{ text: `${systemPrompt}\n\n${promptUser}` }],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.6,
-          maxOutputTokens: 400,
-        },
-      }),
-    });
+    for (const m of modelsToTry) {
+      try {
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4500);
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data?.error?.message || 'Erro Gemini');
+        const res = await fetch(url, {
+          method: 'POST',
+          signal: controller.signal,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: `${systemPrompt}\n\n${promptUser}` }],
+              },
+            ],
+            generationConfig: {
+              temperature: 0.7,
+              maxOutputTokens: 350,
+            },
+          }),
+        });
+        clearTimeout(timeout);
 
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-    return cleanResponse(text || '');
+        if (res.ok) {
+          const data = await res.json();
+          const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) return cleanResponse(text);
+        }
+      } catch (e) {
+        // Tenta próximo modelo
+      }
+    }
+
+    return '';
   }
 
-  // 2. OpenAI / Groq
+  // OpenAI / Groq
   const endpoint =
     provider === 'groq'
       ? 'https://api.groq.com/openai/v1/chat/completions'
@@ -270,8 +343,12 @@ Atendente:`;
 
   const defaultModel = provider === 'groq' ? 'llama-3.1-70b-versatile' : 'gpt-4o-mini';
 
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 4500);
+
   const res = await fetch(endpoint, {
     method: 'POST',
+    signal: controller.signal,
     headers: {
       Authorization: `Bearer ${apiKey}`,
       'Content-Type': 'application/json',
@@ -282,16 +359,19 @@ Atendente:`;
         { role: 'system', content: systemPrompt },
         { role: 'user', content: promptUser },
       ],
-      temperature: 0.6,
-      max_tokens: 400,
+      temperature: 0.7,
+      max_tokens: 350,
     }),
   });
+  clearTimeout(timeout);
 
-  const data = await res.json();
-  if (!res.ok) throw new Error(data?.error?.message || 'Erro OpenAI');
+  if (res.ok) {
+    const data = await res.json();
+    const text = data?.choices?.[0]?.message?.content;
+    if (text) return cleanResponse(text);
+  }
 
-  const text = data?.choices?.[0]?.message?.content;
-  return cleanResponse(text || '');
+  return '';
 }
 
 function cleanResponse(text: string): string {
