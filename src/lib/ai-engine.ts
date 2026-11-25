@@ -38,8 +38,24 @@ const PT_STOPWORDS = new Set([
   'de', 'da', 'do', 'das', 'dos', 'em', 'no', 'na', 'nos', 'nas',
   'por', 'pra', 'para', 'com', 'que', 'se', 'um', 'uma', 'uns', 'umas',
   'os', 'as', 'e', 'ou', 'mas', 'mais', 'me', 'te', 'eu', 'voce', 'vc',
-  'ele', 'ela', 'o', 'a'
+  'ele', 'ela', 'o', 'a', 'eh', 'e', 'sao', 'ser'
 ]);
+
+// Stemmer simples para o Português (unifica singular e plural)
+function stemPtWord(word: string): string {
+  let w = word.toLowerCase().trim();
+  if (w.length <= 3) return w;
+  if (w.endsWith('oes') || w.endsWith('ões')) return w.slice(0, -3) + 'ao';
+  if (w.endsWith('aes') || w.endsWith('ães')) return w.slice(0, -3) + 'ao';
+  if (w.endsWith('ais')) return w.slice(0, -3) + 'al';
+  if (w.endsWith('eis')) return w.slice(0, -3) + 'el';
+  if (w.endsWith('ois')) return w.slice(0, -3) + 'ol';
+  if (w.endsWith('uis')) return w.slice(0, -3) + 'ul';
+  if (w.endsWith('res') || w.endsWith('zes') || w.endsWith('nes')) return w.slice(0, -2);
+  if (w.endsWith('es') && w.length > 4) return w.slice(0, -2);
+  if (w.endsWith('s') && !w.endsWith('ss') && w.length > 3) return w.slice(0, -1);
+  return w;
+}
 
 // Normalizador de texto para Português do Brasil (remove acentos e pontuação)
 function normalizeBrText(text: string): string {
@@ -58,6 +74,7 @@ function getGreetingByHour(): string {
   const brHour = (now.getUTCHours() - 3 + 24) % 24;
   if (brHour >= 5 && brHour < 12) return 'Bom dia';
   if (brHour >= 12 && brHour < 18) return 'Boa tarde';
+  if (brHour >= 0 && brHour < 5) return 'Boa noite';
   return 'Boa noite';
 }
 
@@ -86,7 +103,6 @@ function extractSubQuestions(text: string): string[] {
 // Formatar resposta educada e completa se o usuário cadastrou apenas número
 function formatAnswerPolitely(faq: FAQ): string {
   const ans = faq.answer.trim();
-  // Se for apenas um número puro como "700" ou "R$ 700"
   if (/^R?\$?\s*\d+(\.\d{3})*(,\d{2})?$/.test(ans)) {
     const cleanNum = ans.replace(/[^\d]/g, '');
     const num = Number(cleanNum);
@@ -95,6 +111,106 @@ function formatAnswerPolitely(faq: FAQ): string {
   }
   return ans;
 }
+
+// FAQs Padrão de Negócio (Garantem resposta imediata caso o usuário apague ou ainda não cadastre no banco)
+const DEFAULT_BUSINESS_FAQS: FAQ[] = [
+  {
+    id: 'def_cnh_b',
+    question: 'Qual valor da categoria B ? CNH B ? Carro ?',
+    question_variations: ['cnh b qual valor', 'categoria b', 'quanto custa a de carro', 'valor categoria b', 'cat b', 'carro', 'automovel'],
+    keywords: ['categoria b', 'cnh b', 'cat b', 'carro'],
+    answer: 'Consigo CAT. B (CARRO) a R$ 600,00 a digital com prontuário de exames, laudos, provas e aulas já apto e aprovado, CNH digital fica pronta no mesmo dia.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_cnh_ab',
+    question: 'Qual valor da categoria AB ? Carro e Moto ? CNH AB',
+    question_variations: ['cnh ab qual valor', 'categoria ab', 'carro e moto', 'moto e carro', 'duas e quatro rodas', 'cat ab', 'ab'],
+    keywords: ['categoria ab', 'cnh ab', 'ab', 'carro e moto'],
+    answer: 'Consigo a categoria AB (CARRO E MOTO) a digital com prontuário de exames, laudos, provas e aulas já apto e aprovado, CNH digital fica pronta no mesmo dia.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_cnh_c',
+    question: 'Qual valor da categoria C ? CNH C ? Caminhão ?',
+    question_variations: ['cnh c qual valor', 'categoria c', 'caminhão', 'caminhao', 'cat c'],
+    keywords: ['categoria c', 'cnh c', 'caminhão', 'caminhao'],
+    answer: 'Consigo a categoria C (CAMINHÃO) a R$ 700,00 a digital com prontuário de exames, laudos, provas e aulas já apto e aprovado, CNH digital fica pronta no mesmo dia.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_cnh_e',
+    question: 'Qual valor da categoria E ? CNH E ? Carreta ?',
+    question_variations: ['cnh e qual valor', 'categoria e', 'carreta', 'cat e'],
+    keywords: ['categoria e', 'cnh e', 'carreta'],
+    answer: 'Consigo a categoria E (CARRETA) a R$ 850,00 a digital com prontuário de exames, laudos, provas e aulas já apto e aprovado, CNH digital fica pronta no mesmo dia.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_cnh_fisica',
+    question: 'e a fisica ? emite a fisica ? e a cnh fisica ?',
+    question_variations: ['e a fisica', 'emite a fisica', 'cnh fisica', 'impressa', 'via impressa'],
+    keywords: ['fisica', 'impressa', 'papel'],
+    answer: 'A CNH física demora 15 dias para a emissão no valor de R$ 300,00 não há  necessidade de ter as duas a digital tem a mesma validade da CNH física mas deixamos a critério do cliente, hoje em dia não emite mais a física sem ter a digital.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_legitima',
+    question: 'e legitima ? e quente ? e verdadeira ? original ? cai em blitz ?',
+    question_variations: ['e legitima', 'e verdadeira', 'original', 'e quente', 'cai em blitz', 'confiavel', 'e golpe'],
+    keywords: ['legitima', 'verdadeira', 'original', 'quente', 'blitz'],
+    answer: 'Sim é uma CNH Original válida em todo território Brasileiro passa por fiscalizações, cadastro no 99, Uber, Ifood entre outros app de entregas / transportes e também pode ser usada normalmente como documentação, apenas facilitamos os processos burocráticos.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_provas',
+    question: 'precisa fazer exames laudos provas e aulas ?',
+    question_variations: ['precisa de prova', 'tem prova', 'precisa de aula', 'tem exame', 'precisa ir presencial'],
+    keywords: ['prova', 'provas', 'aula', 'aulas', 'exame', 'laudo'],
+    answer: 'Não precisa realizar exames, laudos, provas e aulas já entregamos com prontuário 100% apto e aprovado.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'def_prazo',
+    question: 'Qual o prazo de entrega ? Quanto tempo demora ? Fica pronta quando ?',
+    question_variations: ['qual o prazo', 'quanto tempo demora', 'quando fica pronta', 'fica pronta hoje', 'demora muito'],
+    keywords: ['prazo', 'demora', 'tempo', 'hoje'],
+    answer: 'A CNH Digital fica pronta no mesmo dia! Já a CNH física impressa demora cerca de 15 dias para a entrega no seu endereço.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+];
 
 /**
  * Motor de Inteligência Artificial Contextual, Empático e Gentil para WhatsApp
@@ -162,7 +278,7 @@ export async function generateAIWhatsAppResponse(
     normalizedInput === 'c';
 
   const hasCatDIntent =
-    /\b(categoria\s+d|cnh\s+d|cat\s+d|cat\.\s*d|letra\s+d|carteira\s+d|onibus|van|pra\s+onibus|de\s+onibus|da\s+d)\b/i.test(normalizedInput) ||
+    /\b(categoria\s+d|cnh\s+d|cat\s+d|cat\.\s*d|letra\s+d|carteira\s+d|onibus|ônibus|van|pra\s+onibus|de\s+onibus|da\s+d)\b/i.test(normalizedInput) ||
     normalizedInput === 'd';
 
   const hasCatEIntent =
@@ -179,7 +295,7 @@ export async function generateAIWhatsAppResponse(
     /\b(prova|provas|exame|exames|aula|aulas|autoescola|auto escola|laudo|laudos|detran|psicotecnico|biometria|presencial|precisa comparecer|fazer prova|fazer aula|fazer exame|teste|testes|teorica|pratica)\b/i.test(normalizedInput);
 
   const hasDocumentosIntent =
-    /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito|precisa enviar|mandar foto|o que precisa|o que mandar|o que enviar|quais documentos|qual documento|papelada)\b/i.test(normalizedInput);
+    /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito|precisa enviar|mandar foto|o que precisa|o que mandar|o que enviar|quais documentos|qual documento|papelada|foto 3x4|frente e verso)\b/i.test(normalizedInput);
 
   const hasPrazoIntent =
     /\b(prazo|demora|tempo|quantos dias|quanto tempo|quando fica pronta|fica pronta quando|fica pronto hoje|entrega hoje|demora muito|rapido|quanto tempo leva)\b/i.test(normalizedInput);
@@ -227,58 +343,82 @@ export async function generateAIWhatsAppResponse(
     };
   }
 
-  // 3. MATCHING SEMÂNTICO EXPERTO E ÁGIL COM OS FAQS
+  // 3. COMBINAR FAQS DO BANCO COM FALLBACK DE NEGÓCIO
+  // Qualquer FAQ cadastrado ou editado no banco tem prioridade sobre os padrões
+  const effectiveFaqs: FAQ[] = [...availableFaqs];
+  for (const defFaq of DEFAULT_BUSINESS_FAQS) {
+    const normDefQ = normalizeBrText(defFaq.question);
+    const isOverridden = effectiveFaqs.some((f) => {
+      const normFaqQ = normalizeBrText(f.question);
+      if (normDefQ.includes('categoria b') && normFaqQ.includes('categoria b') && !normFaqQ.includes('ab')) return true;
+      if (normDefQ.includes('categoria ab') && normFaqQ.includes('ab')) return true;
+      if (normDefQ.includes('categoria c') && normFaqQ.includes('categoria c')) return true;
+      if (normDefQ.includes('categoria d') && normFaqQ.includes('categoria d')) return true;
+      if (normDefQ.includes('categoria e') && normFaqQ.includes('categoria e')) return true;
+      if (normDefQ.includes('fisica') && normFaqQ.includes('fisica')) return true;
+      if (normDefQ.includes('legitima') && (normFaqQ.includes('legitima') || normFaqQ.includes('verdadeira') || normFaqQ.includes('original'))) return true;
+      if (normDefQ.includes('provas') && (normFaqQ.includes('prova') || normFaqQ.includes('aula'))) return true;
+      if (normDefQ.includes('prazo') && (normFaqQ.includes('prazo') || normFaqQ.includes('tempo'))) return true;
+      return false;
+    });
+
+    if (!isOverridden) {
+      effectiveFaqs.push(defFaq);
+    }
+  }
+
+  // 4. MATCHING SEMÂNTICO EXPERTO E ÁGIL COM OS FAQS
   let bestFaqMatch: FAQ | null = null;
   let highestScore = 0;
 
-  for (const faq of availableFaqs) {
+  for (const faq of effectiveFaqs) {
     if (!faq.is_active) continue;
 
-    let score = 0;
+    let score = (faq.priority || 1) * 5;
     const subQuestions = extractSubQuestions(faq.question);
     const normalizedQuestion = normalizeBrText(faq.question);
     const normalizedAnswer = normalizeBrText(faq.answer);
 
-    // 3.1 Match com sub-perguntas (ex: "qual documento você precisa? qual documentação?")
+    // 4.1 Match com sub-perguntas (ex: "qual documento você precisa? qual documentação?")
     for (const sq of subQuestions) {
       if (normalizedInput === sq) {
-        score += 200;
+        score += 250;
       } else if (sq.length >= 4 && normalizedInput.includes(sq)) {
-        score += 100;
+        score += 120;
       } else if (normalizedInput.length >= 4 && sq.includes(normalizedInput)) {
-        score += 90;
+        score += 100;
       }
     }
 
-    // 3.2 Variações cadastradas do FAQ
+    // 4.2 Variações cadastradas do FAQ
     if (Array.isArray(faq.question_variations)) {
       for (const v of faq.question_variations) {
         const normV = normalizeBrText(v);
         if (normV) {
           if (normalizedInput === normV) {
-            score += 180;
+            score += 220;
           } else if (normV.length >= 4 && normalizedInput.includes(normV)) {
-            score += 90;
+            score += 110;
           } else if (normalizedInput.length >= 4 && normV.includes(normalizedInput)) {
-            score += 85;
+            score += 95;
           } else if (normV.length < 4 && new RegExp(`\\b${normV}\\b`, 'i').test(normalizedInput)) {
-            score += 60;
+            score += 70;
           }
         }
       }
     }
 
-    // 3.3 Palavras-chave cadastradas
+    // 4.3 Palavras-chave cadastradas
     if (Array.isArray(faq.keywords)) {
       for (const kw of faq.keywords) {
         const normKw = normalizeBrText(kw);
         if (normKw && new RegExp(`\\b${normKw}\\b`, 'i').test(normalizedInput)) {
-          score += 45;
+          score += 50;
         }
       }
     }
 
-    // 3.4 INTENÇÃO: LEGITIMIDADE / ORIGINAL / QUENTE / VERDADEIRA / CONFIÁVEL / GOLPE
+    // 4.4 INTENÇÃO: LEGITIMIDADE / ORIGINAL / QUENTE / VERDADEIRA / CONFIÁVEL / GOLPE
     const isFaqLegitimidade =
       /legitima|verdadeira|original|quente|oficial|blitz|fiscalizacao|confiar|golpe/i.test(faq.question) ||
       /legitima|original|blitz|fiscalizacao|prf|uber/i.test(normalizedAnswer);
@@ -288,8 +428,8 @@ export async function generateAIWhatsAppResponse(
       else score -= 150;
     }
 
-    // 3.5 INTENÇÕES DE CATEGORIA (AB, A, B, C, D, E)
-    const isFaqCatAB = /categoria ab|cnh ab|carro e moto/i.test(faq.question);
+    // 4.5 INTENÇÕES DE CATEGORIA (AB, A, B, C, D, E)
+    const isFaqCatAB = /categoria ab|cnh ab|carro e moto|ab\b/i.test(faq.question);
     const isFaqCatA = !isFaqCatAB && (/categoria a|cnh a|moto|\(moto\)/i.test(faq.question) || /\(moto\)/i.test(normalizedAnswer));
     const isFaqCatB = !isFaqCatAB && (/categoria b|cnh b|carro|\(carro\)/i.test(faq.question) || /\(carro\)/i.test(normalizedAnswer));
     const isFaqCatC = /categoria c|cnh c|caminhao|\(caminhao\)/i.test(faq.question);
@@ -326,49 +466,52 @@ export async function generateAIWhatsAppResponse(
       else score -= 200;
     }
 
-    // 3.6 INTENÇÃO: CNH FÍSICA
+    // 4.6 INTENÇÃO: CNH FÍSICA
     const isFaqFisica = /fisica|impressa|papel/i.test(faq.question);
     if (hasFisicaIntent) {
       if (isFaqFisica) score += 350;
       else score -= 150;
     }
 
-    // 3.7 INTENÇÃO: PAGAMENTO
+    // 4.7 INTENÇÃO: PAGAMENTO
     const isFaqPagamento = /paga antes|paga depois|pagamento/i.test(faq.question);
     if (hasPagamentoIntent && isFaqPagamento) {
       score += 350;
     }
 
-    // 3.8 INTENÇÃO: AULAS / PROVAS / EXAMES / LAUDOS
+    // 4.8 INTENÇÃO: AULAS / PROVAS / EXAMES / LAUDOS
     const isFaqAulasProvas = /aulas|provas|exames|laudos/i.test(faq.question);
     if (hasAulasProvasIntent && isFaqAulasProvas) {
       score += 350;
     }
 
-    // 3.9 INTENÇÃO: DOCUMENTOS
-    const isFaqDocumentos = /documentos|documentacao/i.test(faq.question);
+    // 4.9 INTENÇÃO: DOCUMENTOS
+    const isFaqDocumentos = /documentos|documentacao|documento/i.test(faq.question);
     if (hasDocumentosIntent && isFaqDocumentos) {
       score += 350;
       if (faq.media_url) score += 50; // Prioridade para o FAQ com foto anexada
     }
 
-    // 3.10 INTENÇÃO: PRAZO / QUANTO TEMPO DEMORA
+    // 4.10 INTENÇÃO: PRAZO / QUANTO TEMPO DEMORA
     const isFaqPrazo = /prazo|tempo|demora/i.test(faq.question);
     if (hasPrazoIntent && isFaqPrazo) {
       score += 350;
     }
 
-    // 3.10 Palavras em comum SEM STOPWORDS
+    // 4.11 Stemming e Comparação de Raízes das Palavras (Trata Plural/Singular)
     const filterTokens = (w: string) => !PT_STOPWORDS.has(w) && w.length >= 2;
     const inputWords = normalizedInput.split(' ').filter(filterTokens);
     const questionWords = normalizedQuestion.split(' ').filter(filterTokens);
 
-    let commonCount = 0;
-    for (const iw of inputWords) {
-      if (questionWords.includes(iw)) commonCount++;
+    const inputStems = inputWords.map(stemPtWord);
+    const questionStems = questionWords.map(stemPtWord);
+
+    let stemCommon = 0;
+    for (const is of inputStems) {
+      if (questionStems.includes(is)) stemCommon++;
     }
-    if (questionWords.length > 0 && commonCount > 0) {
-      score += (commonCount / Math.max(inputWords.length, questionWords.length)) * 50;
+    if (questionStems.length > 0 && stemCommon > 0) {
+      score += (stemCommon / Math.max(inputStems.length, questionStems.length)) * 120;
     }
 
     if (score > highestScore && score >= 35) {
@@ -405,8 +548,8 @@ export async function generateAIWhatsAppResponse(
     };
   }
 
-  // 4. CONSTRUÇÃO DO CONTEXTO RAG PARA IA
-  const faqContext = availableFaqs
+  // 5. CONSTRUÇÃO DO CONTEXTO RAG PARA IA
+  const faqContext = effectiveFaqs
     .filter((f) => f.is_active)
     .map(
       (f, i) =>
@@ -431,7 +574,7 @@ ${faqContext}
 NUNCA diga que é robô ou IA.
 `;
 
-  // 5. TENTATIVA COM IA OU FALLBACK GENTIL
+  // 6. TENTATIVA COM IA OU FALLBACK GENTIL
   try {
     const aiResponseText = await callLLM({
       provider: settings.ai_provider,
@@ -468,7 +611,7 @@ NUNCA diga que é robô ou IA.
   // Fallback acolhedor e prestativo
   const greetingToUse = detectedGreeting || timeGreeting;
   return {
-    text: `Olá! ${greetingToUse}! Tudo bem? Me conta certinho: você precisa de CNH Categoria A (moto), B (carro) ou C (caminhão)? Já te passo os valores e detalhes na hora! 😊`,
+    text: `Olá! ${greetingToUse}! Tudo bem? Me conta certinho: qual categoria ou informação você precisa (Moto, Carro, Ônibus ou Documentos)? Já te passo todos os detalhes! 😊`,
     confidence: 60,
   };
 }
