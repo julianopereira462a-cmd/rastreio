@@ -79,7 +79,8 @@ export async function POST(req: NextRequest) {
 
       const { data, error } = await supabaseAdmin
         .from('system_settings')
-        .upsert(dbPayload)
+        .update(dbPayload)
+        .eq('id', '00000000-0000-0000-0000-000000000001')
         .select()
         .single();
 
