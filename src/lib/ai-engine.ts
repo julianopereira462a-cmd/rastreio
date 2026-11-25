@@ -123,7 +123,7 @@ export async function generateAIWhatsAppResponse(
 
   // Verificação de intenções específicas no texto com regex de fronteira de palavras (\b)
   const hasLegitimidadeIntent =
-    /\b(legitima|legitimo|verdadeira|verdadeiro|original|quente|oficial|autentica|autentico|golpe|fraude|confiar|confiavel|seguro|segura|garantia|garantido|blitz|prf|policia|fiscalizacao|uber|99|ifood|da certo|funciona)\b/i.test(normalizedInput);
+    /\b(legitima|legitimo|verdadeira|verdadeiro|verdade|real|original|quente|oficial|autentica|autentico|golpe|fraude|confiar|confiavel|confianca|seguro|segura|garantia|garantido|blitz|prf|policia|guarda|fiscalizacao|uber|99|ifood|da certo|funciona|valida|legalizada)\b/i.test(normalizedInput);
 
   const hasCatABIntent =
     /\b(categoria\s+ab|cnh\s+ab|cat\s+ab|cat\.\s*ab|ab|carro\s+e\s+moto|moto\s+e\s+carro|duas\s+e\s+quatro\s+rodas)\b/i.test(normalizedInput);
@@ -159,16 +159,19 @@ export async function generateAIWhatsAppResponse(
     normalizedInput === 'e';
 
   const hasFisicaIntent =
-    /\b(fisica|impressa|impresso|papel|plastificada|cartao|entregue em casa|via impressa)\b/i.test(normalizedInput);
+    /\b(fisica|impressa|impresso|papel|plastificada|cartao|entregue em casa|via impressa|emitem a fisica|emite a fisica|tem a fisica|carteira de papel|correio|sedex)\b/i.test(normalizedInput);
 
   const hasPagamentoIntent =
-    /\b(paga|pagar|pagamento|antes|depois|quando paga|quando pagar|quando eu pago|forma de pagamento|entrada|adiantado|antecipado|precisa pagar|paga na entrega|paga pronta|pix|cartao)\b/i.test(normalizedInput);
+    /\b(paga|pagar|pagamento|antes|depois|quando paga|quando pagar|quando eu pago|forma de pagamento|entrada|adiantado|antecipado|precisa pagar|paga na entrega|paga pronta|pix|cartao|parcela|parcelamento|como pago|como pagar|cobra antes|da entrada)\b/i.test(normalizedInput);
 
   const hasAulasProvasIntent =
-    /\b(prova|provas|exame|exames|aula|aulas|autoescola|auto escola|laudo|laudos|detran|psicotecnico|biometria|presencial|precisa comparecer|fazer prova|fazer aula|fazer exame)\b/i.test(normalizedInput);
+    /\b(prova|provas|exame|exames|aula|aulas|autoescola|auto escola|laudo|laudos|detran|psicotecnico|biometria|presencial|precisa comparecer|fazer prova|fazer aula|fazer exame|teste|testes|teorica|pratica)\b/i.test(normalizedInput);
 
   const hasDocumentosIntent =
-    /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito|precisa enviar|mandar foto)\b/i.test(normalizedInput);
+    /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito|precisa enviar|mandar foto|o que precisa|o que mandar|o que enviar|quais documentos|qual documento|papelada)\b/i.test(normalizedInput);
+
+  const hasPrazoIntent =
+    /\b(prazo|demora|tempo|quantos dias|quanto tempo|quando fica pronta|fica pronta quando|fica pronto hoje|entrega hoje|demora muito|rapido|quanto tempo leva)\b/i.test(normalizedInput);
 
   const hasSpecificDoubt =
     hasLegitimidadeIntent ||
@@ -182,6 +185,7 @@ export async function generateAIWhatsAppResponse(
     hasPagamentoIntent ||
     hasAulasProvasIntent ||
     hasDocumentosIntent ||
+    hasPrazoIntent ||
     /\b(cnh|valor|preco|quanto|custa|demora|prazo|dias)\b/i.test(normalizedInput);
 
   // Se a pessoa apenas saudou (ex: "boa noite", "boa noitre", "bom dia", "olá", "oi tudo bem?")
@@ -335,6 +339,12 @@ export async function generateAIWhatsAppResponse(
     if (hasDocumentosIntent && isFaqDocumentos) {
       score += 350;
       if (faq.media_url) score += 50; // Prioridade para o FAQ com foto anexada
+    }
+
+    // 3.10 INTENÇÃO: PRAZO / QUANTO TEMPO DEMORA
+    const isFaqPrazo = /prazo|tempo|demora/i.test(faq.question);
+    if (hasPrazoIntent && isFaqPrazo) {
+      score += 350;
     }
 
     // 3.10 Palavras em comum SEM STOPWORDS
