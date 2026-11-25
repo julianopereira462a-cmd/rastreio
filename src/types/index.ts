@@ -12,6 +12,9 @@ export type SystemSettings = {
   whatsapp_waba_id: string;
   whatsapp_access_token: string;
   whatsapp_verify_token: string;
+  zapi_instance_id?: string;
+  zapi_token?: string;
+  zapi_client_token?: string;
   ai_provider: 'gemini' | 'openai' | 'groq';
   ai_api_key: string;
   ai_model_name: string;
