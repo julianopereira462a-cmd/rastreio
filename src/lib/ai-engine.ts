@@ -59,6 +59,19 @@ function extractGreeting(normalizedInput: string): string {
   return '';
 }
 
+// Extrair sub-perguntas caso o usuário tenha cadastrado várias perguntas em um único campo separadas por ? ou /
+function extractSubQuestions(text: string): string[] {
+  const parts = text.split(/[?,/]/);
+  const results: string[] = [];
+  for (const p of parts) {
+    const n = normalizeBrText(p);
+    if (n.length >= 2) results.push(n);
+  }
+  const full = normalizeBrText(text);
+  if (full && !results.includes(full)) results.push(full);
+  return results;
+}
+
 // Formatar resposta educada e completa se o usuário cadastrou apenas número
 function formatAnswerPolitely(faq: FAQ): string {
   const ans = faq.answer.trim();
@@ -108,48 +121,66 @@ export async function generateAIWhatsAppResponse(
     );
   });
 
-  // Verificação de intenções específicas no texto
-  const hasLegitimidadeIntent = [
-    'legitima', 'legitimo', 'verdadeira', 'verdadeiro', 'original', 'quente',
-    'oficial', 'autentica', 'autentico', 'golpe', 'fraude', 'confiar', 'confiavel',
-    'seguro', 'segura', 'garantia', 'garantido', 'blitz', 'prf', 'policia',
-    'fiscalizacao', 'detran', 'uber', '99', 'ifood', 'da certo', 'funciona'
-  ].some((term) => {
-    return new RegExp(`\\b${term}\\b`, 'i').test(normalizedInput);
-  });
+  // Verificação de intenções específicas no texto com regex de fronteira de palavras (\b)
+  const hasLegitimidadeIntent =
+    /\b(legitima|legitimo|verdadeira|verdadeiro|original|quente|oficial|autentica|autentico|golpe|fraude|confiar|confiavel|seguro|segura|garantia|garantido|blitz|prf|policia|fiscalizacao|uber|99|ifood|da certo|funciona)\b/i.test(normalizedInput);
+
+  const hasCatABIntent =
+    /\b(categoria\s+ab|cnh\s+ab|cat\s+ab|cat\.\s*ab|ab|carro\s+e\s+moto|moto\s+e\s+carro|duas\s+e\s+quatro\s+rodas)\b/i.test(normalizedInput);
 
   const hasCatAIntent =
-    /\b(categoria\s+a|cnh\s+a|cat\s+a|letra\s+a|carteira\s+a|habilitacao\s+a|moto|motocicleta|motoquinha|duas\s+rodas|da\s+a|pra\s+a)\b/i.test(normalizedInput) ||
-    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(moto|motocicleta)\b/i.test(normalizedInput) ||
-    /\b(moto|motocicleta)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
-    normalizedInput === 'a';
+    !hasCatABIntent && (
+      /\b(categoria\s+a|cnh\s+a|cat\s+a|cat\.\s*a|letra\s+a|carteira\s+a|habilitacao\s+a|moto|motocicleta|motoquinha|duas\s+rodas|pra\s+moto|de\s+moto|da\s+a)\b/i.test(normalizedInput) ||
+      /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(moto|motocicleta)\b/i.test(normalizedInput) ||
+      /\b(moto|motocicleta)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+      normalizedInput === 'a'
+    );
 
   const hasCatBIntent =
-    /\b(categoria\s+b|cnh\s+b|cat\s+b|letra\s+b|carteira\s+b|habilitacao\s+b|carro|automovel|quatro\s+rodas|da\s+b|pra\s+b|a\s+b)\b/i.test(normalizedInput) ||
-    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(b|carro|automovel)\b/i.test(normalizedInput) ||
-    /\b(b|carro|automovel)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
-    normalizedInput === 'b';
+    !hasCatABIntent && (
+      /\b(categoria\s+b|cnh\s+b|cat\s+b|cat\.\s*b|letra\s+b|carteira\s+b|habilitacao\s+b|carro|automovel|quatro\s+rodas|pra\s+carro|de\s+carro|da\s+b)\b/i.test(normalizedInput) ||
+      /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(carro|automovel)\b/i.test(normalizedInput) ||
+      /\b(carro|automovel)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+      normalizedInput === 'b'
+    );
 
   const hasCatCIntent =
-    /\b(categoria\s+c|cnh\s+c|cat\s+c|letra\s+c|carteira\s+c|habilitacao\s+c|caminhao|da\s+c|pra\s+c)\b/i.test(normalizedInput) ||
-    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(c|caminhao)\b/i.test(normalizedInput) ||
-    /\b(c|caminhao)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+    /\b(categoria\s+c|cnh\s+c|cat\s+c|cat\.\s*c|letra\s+c|carteira\s+c|habilitacao\s+c|caminhao|caminhão|pra\s+caminhao|de\s+caminhao|da\s+c)\b/i.test(normalizedInput) ||
+    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(caminhao|caminhão)\b/i.test(normalizedInput) ||
+    /\b(caminhao|caminhão)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
     normalizedInput === 'c';
 
-  const hasCatDIntent = /\b(categoria\s+d|cnh\s+d|cat\s+d|letra\s+d|onibus|van|da\s+d|pra\s+d)\b/i.test(normalizedInput) || normalizedInput === 'd';
-  const hasCatEIntent = /\b(categoria\s+e|cnh\s+e|cat\s+e|letra\s+e|carreta|da\s+e|pra\s+e)\b/i.test(normalizedInput) || normalizedInput === 'e';
+  const hasCatDIntent =
+    /\b(categoria\s+d|cnh\s+d|cat\s+d|cat\.\s*d|letra\s+d|carteira\s+d|onibus|van|pra\s+onibus|de\s+onibus|da\s+d)\b/i.test(normalizedInput) ||
+    normalizedInput === 'd';
 
-  const hasFisicaIntent = /\b(fisica|impressa|impresso|papel|plastificada|cartao)\b/i.test(normalizedInput);
-  const hasDocumentosIntent = /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito)\b/i.test(normalizedInput);
+  const hasCatEIntent =
+    /\b(categoria\s+e|cnh\s+e|cat\s+e|cat\.\s*e|letra\s+e|carteira\s+e|carreta|pra\s+carreta|de\s+carreta|da\s+e)\b/i.test(normalizedInput) ||
+    normalizedInput === 'e';
+
+  const hasFisicaIntent =
+    /\b(fisica|impressa|impresso|papel|plastificada|cartao|entregue em casa|via impressa)\b/i.test(normalizedInput);
+
+  const hasPagamentoIntent =
+    /\b(paga|pagar|pagamento|antes|depois|quando paga|quando pagar|quando eu pago|forma de pagamento|entrada|adiantado|antecipado|precisa pagar|paga na entrega|paga pronta|pix|cartao)\b/i.test(normalizedInput);
+
+  const hasAulasProvasIntent =
+    /\b(prova|provas|exame|exames|aula|aulas|autoescola|auto escola|laudo|laudos|detran|psicotecnico|biometria|presencial|precisa comparecer|fazer prova|fazer aula|fazer exame)\b/i.test(normalizedInput);
+
+  const hasDocumentosIntent =
+    /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito|precisa enviar|mandar foto)\b/i.test(normalizedInput);
 
   const hasSpecificDoubt =
     hasLegitimidadeIntent ||
+    hasCatABIntent ||
     hasCatAIntent ||
     hasCatBIntent ||
     hasCatCIntent ||
     hasCatDIntent ||
     hasCatEIntent ||
     hasFisicaIntent ||
+    hasPagamentoIntent ||
+    hasAulasProvasIntent ||
     hasDocumentosIntent ||
     /\b(cnh|valor|preco|quanto|custa|demora|prazo|dias)\b/i.test(normalizedInput);
 
@@ -189,27 +220,34 @@ export async function generateAIWhatsAppResponse(
     if (!faq.is_active) continue;
 
     let score = 0;
+    const subQuestions = extractSubQuestions(faq.question);
     const normalizedQuestion = normalizeBrText(faq.question);
     const normalizedAnswer = normalizeBrText(faq.answer);
 
-    // 3.1 Match exato ou substring mútua
-    if (normalizedInput === normalizedQuestion) {
-      score += 150;
-    } else if (normalizedInput.includes(normalizedQuestion)) {
-      score += 90;
-    } else if (normalizedQuestion.includes(normalizedInput) && normalizedInput.length >= 3) {
-      score += 85;
+    // 3.1 Match com sub-perguntas (ex: "qual documento você precisa? qual documentação?")
+    for (const sq of subQuestions) {
+      if (normalizedInput === sq) {
+        score += 200;
+      } else if (sq.length >= 4 && normalizedInput.includes(sq)) {
+        score += 100;
+      } else if (normalizedInput.length >= 4 && sq.includes(normalizedInput)) {
+        score += 90;
+      }
     }
 
     // 3.2 Variações cadastradas do FAQ
     if (Array.isArray(faq.question_variations)) {
       for (const v of faq.question_variations) {
         const normV = normalizeBrText(v);
-        if (normV && normV.length >= 2) {
+        if (normV) {
           if (normalizedInput === normV) {
-            score += 120;
-          } else if (normalizedInput.includes(normV) || normV.includes(normalizedInput)) {
-            score += 80;
+            score += 180;
+          } else if (normV.length >= 4 && normalizedInput.includes(normV)) {
+            score += 90;
+          } else if (normalizedInput.length >= 4 && normV.includes(normalizedInput)) {
+            score += 85;
+          } else if (normV.length < 4 && new RegExp(`\\b${normV}\\b`, 'i').test(normalizedInput)) {
+            score += 60;
           }
         }
       }
@@ -219,66 +257,87 @@ export async function generateAIWhatsAppResponse(
     if (Array.isArray(faq.keywords)) {
       for (const kw of faq.keywords) {
         const normKw = normalizeBrText(kw);
-        if (normKw) {
-          if (new RegExp(`\\b${normKw}\\b`, 'i').test(normalizedInput)) {
-            score += 45;
-          }
+        if (normKw && new RegExp(`\\b${normKw}\\b`, 'i').test(normalizedInput)) {
+          score += 45;
         }
       }
     }
 
     // 3.4 INTENÇÃO: LEGITIMIDADE / ORIGINAL / QUENTE / VERDADEIRA / CONFIÁVEL / GOLPE
     const isFaqLegitimidade =
-      /legitima|verdadeira|original|quente|oficial|blitz|fiscalizacao|confiar|golpe/i.test(normalizedQuestion) ||
+      /legitima|verdadeira|original|quente|oficial|blitz|fiscalizacao|confiar|golpe/i.test(faq.question) ||
       /legitima|original|blitz|fiscalizacao|prf|uber/i.test(normalizedAnswer);
 
-    if (hasLegitimidadeIntent && isFaqLegitimidade) {
-      score += 250; // Boost definitivo para o FAQ de legitimidade!
+    if (hasLegitimidadeIntent) {
+      if (isFaqLegitimidade) score += 350;
+      else score -= 150;
     }
 
-    // 3.5 INTENÇÕES DE CATEGORIA (A, B, C, D, E)
-    const isFaqCatA = /categoria a|cnh a|moto|\bcat\.?\s*a\b/i.test(normalizedQuestion) || /categoria a|\(moto\)/i.test(normalizedAnswer);
-    const isFaqCatB = /categoria b|cnh b|carro|\bcat\.?\s*b\b/i.test(normalizedQuestion) || /cat\.?\s*b|\(carro\)/i.test(normalizedAnswer);
-    const isFaqCatC = /categoria c|cnh c|caminhao|\bcat\.?\s*c\b/i.test(normalizedQuestion) || /cat\.?\s*c|\(caminhao\)/i.test(normalizedAnswer);
-    const isFaqCatD = /categoria d|cnh d|onibus/i.test(normalizedQuestion);
-    const isFaqCatE = /categoria e|cnh e|carreta/i.test(normalizedQuestion);
+    // 3.5 INTENÇÕES DE CATEGORIA (AB, A, B, C, D, E)
+    const isFaqCatAB = /categoria ab|cnh ab|carro e moto/i.test(faq.question);
+    const isFaqCatA = !isFaqCatAB && (/categoria a|cnh a|moto|\(moto\)/i.test(faq.question) || /\(moto\)/i.test(normalizedAnswer));
+    const isFaqCatB = !isFaqCatAB && (/categoria b|cnh b|carro|\(carro\)/i.test(faq.question) || /\(carro\)/i.test(normalizedAnswer));
+    const isFaqCatC = /categoria c|cnh c|caminhao|\(caminhao\)/i.test(faq.question);
+    const isFaqCatD = /categoria d|cnh d|onibus|\(onibus\)/i.test(faq.question);
+    const isFaqCatE = /categoria e|cnh e|carreta|\(carreta\)/i.test(faq.question);
+
+    if (hasCatABIntent) {
+      if (isFaqCatAB) score += 350;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE) score -= 200;
+    }
 
     if (hasCatAIntent) {
-      if (isFaqCatA) score += 250;
-      else if (isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE) score -= 150;
+      if (isFaqCatA) score += 350;
+      else if (isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB) score -= 200;
     }
+
     if (hasCatBIntent) {
-      if (isFaqCatB) score += 250;
-      else if (isFaqCatA || isFaqCatC || isFaqCatD || isFaqCatE) score -= 150;
+      if (isFaqCatB) score += 350;
+      else if (isFaqCatA || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB) score -= 200;
     }
+
     if (hasCatCIntent) {
-      if (isFaqCatC) score += 250;
-      else if (isFaqCatA || isFaqCatB || isFaqCatD || isFaqCatE) score -= 150;
+      if (isFaqCatC) score += 350;
+      else if (isFaqCatA || isFaqCatB || isFaqCatD || isFaqCatE || isFaqCatAB) score -= 200;
     }
+
     if (hasCatDIntent) {
-      if (isFaqCatD) score += 250;
-      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatE) score -= 150;
+      if (isFaqCatD) score += 350;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatE || isFaqCatAB) score -= 200;
     }
+
     if (hasCatEIntent) {
-      if (isFaqCatE) score += 250;
-      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD) score -= 150;
+      if (isFaqCatE) score += 350;
+      else score -= 200;
     }
 
     // 3.6 INTENÇÃO: CNH FÍSICA
-    const isFaqFisica = /fisica|impressa|papel/i.test(normalizedQuestion);
-    if (hasFisicaIntent && isFaqFisica) {
-      score += 250;
-    } else if (hasFisicaIntent && !isFaqFisica && /digital/i.test(normalizedQuestion)) {
-      score -= 100;
+    const isFaqFisica = /fisica|impressa|papel/i.test(faq.question);
+    if (hasFisicaIntent) {
+      if (isFaqFisica) score += 350;
+      else score -= 150;
     }
 
-    // 3.7 INTENÇÃO: DOCUMENTOS
-    const isFaqDocumentos = /documentos|documentacao/i.test(normalizedQuestion);
+    // 3.7 INTENÇÃO: PAGAMENTO
+    const isFaqPagamento = /paga antes|paga depois|pagamento/i.test(faq.question);
+    if (hasPagamentoIntent && isFaqPagamento) {
+      score += 350;
+    }
+
+    // 3.8 INTENÇÃO: AULAS / PROVAS / EXAMES / LAUDOS
+    const isFaqAulasProvas = /aulas|provas|exames|laudos/i.test(faq.question);
+    if (hasAulasProvasIntent && isFaqAulasProvas) {
+      score += 350;
+    }
+
+    // 3.9 INTENÇÃO: DOCUMENTOS
+    const isFaqDocumentos = /documentos|documentacao/i.test(faq.question);
     if (hasDocumentosIntent && isFaqDocumentos) {
-      score += 250;
+      score += 350;
+      if (faq.media_url) score += 50; // Prioridade para o FAQ com foto anexada
     }
 
-    // 3.8 Palavras em comum SEM STOPWORDS (evita que 'da', 'de', 'para' gerem matches falsos)
+    // 3.10 Palavras em comum SEM STOPWORDS
     const filterTokens = (w: string) => !PT_STOPWORDS.has(w) && w.length >= 2;
     const inputWords = normalizedInput.split(' ').filter(filterTokens);
     const questionWords = normalizedQuestion.split(' ').filter(filterTokens);

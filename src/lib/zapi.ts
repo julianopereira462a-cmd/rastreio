@@ -124,13 +124,14 @@ export async function sendZApiImage(
   for (const url of endpoints) {
     try {
       const isOmniDirect = url.includes('/v1/channels');
+      const isBase64 = imageUrl.startsWith('data:');
       const body = isOmniDirect
         ? {
             recipient: { identifier: cleanPhone },
             content: {
               type: 'IMAGE',
               body: {
-                url: imageUrl,
+                ...(isBase64 ? { base64: imageUrl } : { url: imageUrl }),
                 caption: caption || '',
               },
             },
