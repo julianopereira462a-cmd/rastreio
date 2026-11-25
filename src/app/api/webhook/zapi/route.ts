@@ -171,14 +171,10 @@ export async function POST(req: NextRequest) {
       knowledgeBase,
     });
 
-    // 9. Calcular tempo natural de "Digitando..." proporcional ao tamanho da resposta
-    const responseLen = aiResult.text ? aiResult.text.length : 50;
-    const typingSeconds =
-      settings.typing_simulation_enabled !== false
-        ? Math.min(4, Math.max(2, Math.round(responseLen / 70)))
-        : 1;
+    // 9. Tempo rápido de resposta (imediato sem travar filas)
+    const typingSeconds = 1;
 
-    // 10. Configuração da Z-API / Z-API Omni com delayTyping ("digitando...")
+    // 10. Configuração da Z-API / Z-API Omni com resposta instantânea
     const channelId =
       body.channelId ||
       body.message?.channel_id ||
@@ -190,7 +186,7 @@ export async function POST(req: NextRequest) {
       instanceId: channelId,
       token: settings.zapi_token || settings.whatsapp_access_token || process.env.ZAPI_TOKEN,
       clientToken: settings.zapi_client_token || settings.whatsapp_verify_token || process.env.ZAPI_CLIENT_TOKEN,
-      delayTyping: typingSeconds, // Exibe "digitando..." por 2 a 3 segundos antes da entrega!
+      delayTyping: typingSeconds,
     };
 
     // 11. Enviar Foto se houver mídia vinculada no FAQ

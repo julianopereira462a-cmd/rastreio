@@ -17,7 +17,7 @@ export async function sendZApiText(
   const instanceId = config?.instanceId || process.env.ZAPI_INSTANCE_ID;
   const token = config?.token || process.env.ZAPI_TOKEN;
   const clientToken = config?.clientToken || process.env.ZAPI_CLIENT_TOKEN;
-  const delayTyping = config?.delayTyping ?? (message.length > 120 ? 3 : 2);
+  const delayTyping = config?.delayTyping ?? 0;
 
   if (!instanceId || !token) {
     console.warn('[Z-API] Credenciais não configuradas. Simulação ativa.');
