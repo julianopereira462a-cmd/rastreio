@@ -118,11 +118,26 @@ export async function generateAIWhatsAppResponse(
     return new RegExp(`\\b${term}\\b`, 'i').test(normalizedInput);
   });
 
-  const hasCatAIntent = /\b(categoria\s+a|cnh\s+a|cat\s+a|letra\s+a|moto|motocicleta|motoquinha|duas\s+rodas|da\s+a|pra\s+a)\b/i.test(normalizedInput);
-  const hasCatBIntent = /\b(categoria\s+b|cnh\s+b|cat\s+b|letra\s+b|carro|automovel|quatro\s+rodas|da\s+b|pra\s+b)\b/i.test(normalizedInput);
-  const hasCatCIntent = /\b(categoria\s+c|cnh\s+c|cat\s+c|letra\s+c|caminhao|da\s+c|pra\s+c)\b/i.test(normalizedInput);
-  const hasCatDIntent = /\b(categoria\s+d|cnh\s+d|cat\s+d|letra\s+d|onibus|van|da\s+d|pra\s+d)\b/i.test(normalizedInput);
-  const hasCatEIntent = /\b(categoria\s+e|cnh\s+e|cat\s+e|letra\s+e|carreta|da\s+e|pra\s+e)\b/i.test(normalizedInput);
+  const hasCatAIntent =
+    /\b(categoria\s+a|cnh\s+a|cat\s+a|letra\s+a|carteira\s+a|habilitacao\s+a|moto|motocicleta|motoquinha|duas\s+rodas|da\s+a|pra\s+a)\b/i.test(normalizedInput) ||
+    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(moto|motocicleta)\b/i.test(normalizedInput) ||
+    /\b(moto|motocicleta)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+    normalizedInput === 'a';
+
+  const hasCatBIntent =
+    /\b(categoria\s+b|cnh\s+b|cat\s+b|letra\s+b|carteira\s+b|habilitacao\s+b|carro|automovel|quatro\s+rodas|da\s+b|pra\s+b|a\s+b)\b/i.test(normalizedInput) ||
+    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(b|carro|automovel)\b/i.test(normalizedInput) ||
+    /\b(b|carro|automovel)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+    normalizedInput === 'b';
+
+  const hasCatCIntent =
+    /\b(categoria\s+c|cnh\s+c|cat\s+c|letra\s+c|carteira\s+c|habilitacao\s+c|caminhao|da\s+c|pra\s+c)\b/i.test(normalizedInput) ||
+    /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(c|caminhao)\b/i.test(normalizedInput) ||
+    /\b(c|caminhao)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
+    normalizedInput === 'c';
+
+  const hasCatDIntent = /\b(categoria\s+d|cnh\s+d|cat\s+d|letra\s+d|onibus|van|da\s+d|pra\s+d)\b/i.test(normalizedInput) || normalizedInput === 'd';
+  const hasCatEIntent = /\b(categoria\s+e|cnh\s+e|cat\s+e|letra\s+e|carreta|da\s+e|pra\s+e)\b/i.test(normalizedInput) || normalizedInput === 'e';
 
   const hasFisicaIntent = /\b(fisica|impressa|impresso|papel|plastificada|cartao)\b/i.test(normalizedInput);
   const hasDocumentosIntent = /\b(documento|documentos|documentacao|rg|cpf|comprovante|requisito)\b/i.test(normalizedInput);
@@ -222,9 +237,9 @@ export async function generateAIWhatsAppResponse(
     }
 
     // 3.5 INTENÇÕES DE CATEGORIA (A, B, C, D, E)
-    const isFaqCatA = /categoria a|cnh a|moto/i.test(normalizedQuestion);
-    const isFaqCatB = /categoria b|cnh b|carro/i.test(normalizedQuestion);
-    const isFaqCatC = /categoria c|cnh c|caminhao/i.test(normalizedQuestion);
+    const isFaqCatA = /categoria a|cnh a|moto|\bcat\.?\s*a\b/i.test(normalizedQuestion) || /categoria a|\(moto\)/i.test(normalizedAnswer);
+    const isFaqCatB = /categoria b|cnh b|carro|\bcat\.?\s*b\b/i.test(normalizedQuestion) || /cat\.?\s*b|\(carro\)/i.test(normalizedAnswer);
+    const isFaqCatC = /categoria c|cnh c|caminhao|\bcat\.?\s*c\b/i.test(normalizedQuestion) || /cat\.?\s*c|\(caminhao\)/i.test(normalizedAnswer);
     const isFaqCatD = /categoria d|cnh d|onibus/i.test(normalizedQuestion);
     const isFaqCatE = /categoria e|cnh e|carreta/i.test(normalizedQuestion);
 
