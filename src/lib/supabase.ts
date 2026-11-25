@@ -1,8 +1,13 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseAnonKey;
+const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-project.supabase.co';
+const rawAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-anon-key';
+const rawServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || rawAnonKey;
+
+// Sanitização estrita: remove espaços, aspas e quebras de linha acidentais
+const supabaseUrl = rawUrl.trim().replace(/['"]/g, '');
+const supabaseAnonKey = rawAnonKey.trim().replace(/['"]/g, '');
+const supabaseServiceKey = rawServiceKey.trim().replace(/['"]/g, '');
 
 // Cliente público para Browser
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
