@@ -10,12 +10,16 @@ export async function POST(req: NextRequest) {
 
     // Logar recebimento no banco de dados para rastreio
     if (isSupabaseConfigured()) {
-      await supabaseAdmin.from('system_logs').insert({
-        event_type: 'webhook_received',
-        level: 'info',
-        message: `Webhook Z-API acionado: ${body.event || 'mensagem'}`,
-        details: body,
-      }).catch((e) => console.error('Erro ao logar webhook:', e));
+      try {
+        await supabaseAdmin.from('system_logs').insert({
+          event_type: 'webhook_received',
+          level: 'info',
+          message: `Webhook Z-API acionado: ${body.event || 'mensagem'}`,
+          details: body,
+        });
+      } catch (e) {
+        console.error('Erro ao logar webhook:', e);
+      }
     }
 
     // 1. Ignorar eventos que não sejam de mensagem recebida (ex: MESSAGE_STATUS, MESSAGE_DELIVERY)
@@ -136,12 +140,14 @@ export async function POST(req: NextRequest) {
     }
 
     if (isSupabaseConfigured()) {
-      await supabaseAdmin.from('system_logs').insert({
-        event_type: 'whatsapp_sent',
-        level: sendResult?.success ? 'info' : 'warn',
-        message: sendResult?.success ? 'Mensagem enviada com sucesso' : 'Tentativa de envio de mensagem',
-        details: { senderPhone, reply: aiResult.text, sendResult },
-      }).catch(() => {});
+      try {
+        await supabaseAdmin.from('system_logs').insert({
+          event_type: 'whatsapp_sent',
+          level: sendResult?.success ? 'info' : 'warn',
+          message: sendResult?.success ? 'Mensagem enviada com sucesso' : 'Tentativa de envio de mensagem',
+          details: { senderPhone, reply: aiResult.text, sendResult },
+        });
+      } catch (e) {}
     }
 
     return NextResponse.json({
