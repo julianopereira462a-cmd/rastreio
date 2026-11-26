@@ -151,6 +151,18 @@ const DEFAULT_BUSINESS_FAQS: FAQ[] = [
     updated_at: new Date().toISOString(),
   },
   {
+    id: 'def_cnh_ae',
+    question: 'Qual valor da categoria AE ? CNH AE / A/E ? Moto e Carreta ?',
+    question_variations: ['cnh ae qual valor', 'categoria ae', 'cat ae', 'ae', 'a/e', 'moto e carreta', 'carreta e moto'],
+    keywords: ['categoria ae', 'cnh ae', 'cat ae', 'ae', 'a/e', 'moto e carreta'],
+    answer: 'Consigo a categoria AE (MOTO E CARRETA) a R$ 850,00 a digital com prontuário de exames, laudos, provas e aulas já apto e aprovado, CNH digital fica pronta no mesmo dia.',
+    priority: 1,
+    is_active: true,
+    hit_count: 0,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  },
+  {
     id: 'def_cnh_c',
     question: 'Qual valor da categoria C ? CNH C ? Caminhão ?',
     question_variations: ['cnh c qual valor', 'categoria c', 'caminhão', 'caminhao', 'cat c'],
@@ -271,9 +283,14 @@ export async function generateAIWhatsAppResponse(
     /\b(categoria\s*ad|cnh\s*ad|cat\s*ad|cat\.\s*ad|letra\s*ad|carteira\s*ad|habilitacao\s*ad|\bad\b|\ba\s*d\b|\ba\s*e\s*d\b|moto\s*e\s*onibus|onibus\s*e\s*moto|moto\s*e\s*van|van\s*e\s*moto)\b/i.test(normalizedInput) ||
     (/\b(moto|motocicleta)\b/i.test(normalizedInput) && /\b(onibus|van)\b/i.test(normalizedInput));
 
+  const hasCatAEIntent =
+    /\b(categoria\s*ae|cnh\s*ae|cat\s*ae|cat\.\s*ae|letra\s*ae|carteira\s*ae|habilitacao\s*ae|\bae\b|\ba\s*e\s*e\b|cnh\s*a\s*e|categoria\s*a\s*e|cat\s*a\s*e|valor\s*da\s*cnh\s*a\s*e|moto\s*e\s*carreta|carreta\s*e\s*moto)\b/i.test(normalizedInput) ||
+    (/\b(moto|motocicleta)\b/i.test(normalizedInput) && /\b(carreta)\b/i.test(normalizedInput));
+
   const hasCatAIntent =
     !hasCatABIntent &&
-    !hasCatADIntent && (
+    !hasCatADIntent &&
+    !hasCatAEIntent && (
       /\b(categoria\s+a|cnh\s+a|cat\s+a|cat\.\s*a|letra\s+a|carteira\s+a|habilitacao\s+a|moto|motocicleta|motoquinha|duas\s+rodas|pra\s+moto|de\s+moto|da\s+a)\b/i.test(normalizedInput) ||
       /\b(valor|preco|quanto|custa|sai|tabela)\b.*\b(moto|motocicleta)\b/i.test(normalizedInput) ||
       /\b(moto|motocicleta)\b.*\b(valor|preco|quanto|custa|sai|tabela)\b/i.test(normalizedInput) ||
@@ -302,8 +319,10 @@ export async function generateAIWhatsAppResponse(
     );
 
   const hasCatEIntent =
-    /\b(categoria\s+e|cnh\s+e|cat\s+e|cat\.\s*e|letra\s+e|carteira\s+e|carreta|pra\s+carreta|de\s+carreta|da\s+e)\b/i.test(normalizedInput) ||
-    normalizedInput === 'e';
+    !hasCatAEIntent && (
+      /\b(categoria\s+e|cnh\s+e|cat\s+e|cat\.\s*e|letra\s+e|carteira\s+e|carreta|pra\s+carreta|de\s+carreta|da\s+e)\b/i.test(normalizedInput) ||
+      normalizedInput === 'e'
+    );
 
   const hasFisicaIntent =
     /\b(fisica|impressa|impresso|papel|plastificada|cartao|entregue em casa|via impressa|emitem a fisica|emite a fisica|tem a fisica|carteira de papel|correio|sedex)\b/i.test(normalizedInput);
@@ -448,43 +467,54 @@ export async function generateAIWhatsAppResponse(
       else score -= 150;
     }
 
-    // 4.5 INTENÇÕES DE CATEGORIA (AD, AB, A, B, C, D, E)
-    const isFaqCatAD = /categoria ad|cnh ad|ad\b|a\/d/i.test(faq.question);
-    const isFaqCatAB = !isFaqCatAD && /categoria ab|cnh ab|carro e moto|ab\b/i.test(faq.question);
-    const isFaqCatA = !isFaqCatAB && !isFaqCatAD && (/categoria a|cnh a|moto|\(moto\)/i.test(faq.question) || /\(moto\)/i.test(normalizedAnswer));
-    const isFaqCatB = !isFaqCatAB && !isFaqCatAD && (/categoria b|cnh b|carro|\(carro\)/i.test(faq.question) || /\(carro\)/i.test(normalizedAnswer));
+    // 4.5 INTENÇÕES DE CATEGORIA (AE, AD, AB, A, B, C, D, E)
+    const isFaqCatAE = /categoria ae|cnh ae|\bae\b|a\/e/i.test(faq.question);
+    const isFaqCatAD = !isFaqCatAE && /categoria ad|cnh ad|ad\b|a\/d/i.test(faq.question);
+    const isFaqCatAB = !isFaqCatAE && !isFaqCatAD && /categoria ab|cnh ab|carro e moto|ab\b/i.test(faq.question);
+    const isFaqCatA = !isFaqCatAB && !isFaqCatAD && !isFaqCatAE && (/categoria a|cnh a|moto|\(moto\)/i.test(faq.question) || /\(moto\)/i.test(normalizedAnswer));
+    const isFaqCatB = !isFaqCatAB && !isFaqCatAD && !isFaqCatAE && (/categoria b|cnh b|carro|\(carro\)/i.test(faq.question) || /\(carro\)/i.test(normalizedAnswer));
     const isFaqCatC = /categoria c|cnh c|caminhao|\(caminhao\)/i.test(faq.question);
     const isFaqCatD = !isFaqCatAD && (/categoria d|cnh d|onibus|\(onibus\)/i.test(faq.question));
-    const isFaqCatE = /categoria e|cnh e|carreta|\(carreta\)/i.test(faq.question);
+    const isFaqCatE = !isFaqCatAE && (/categoria e|cnh e|carreta|\(carreta\)/i.test(faq.question));
+
+    if (hasCatAEIntent) {
+      if (isFaqCatAE) score += 350;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD) score -= 200;
+    }
 
     if (hasCatADIntent) {
       if (isFaqCatAD) score += 350;
-      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB) score -= 200;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAE) score -= 200;
     }
 
     if (hasCatABIntent) {
       if (isFaqCatAB) score += 350;
-      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAD) score -= 200;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAD || isFaqCatAE) score -= 200;
     }
 
     if (hasCatAIntent) {
       if (isFaqCatA) score += 350;
-      else if (isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD) score -= 200;
+      else if (isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD || isFaqCatAE) score -= 200;
     }
 
     if (hasCatBIntent) {
       if (isFaqCatB) score += 350;
-      else if (isFaqCatA || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD) score -= 200;
+      else if (isFaqCatA || isFaqCatC || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD || isFaqCatAE) score -= 200;
     }
 
     if (hasCatCIntent) {
       if (isFaqCatC) score += 350;
-      else if (isFaqCatA || isFaqCatB || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD) score -= 200;
+      else if (isFaqCatA || isFaqCatB || isFaqCatD || isFaqCatE || isFaqCatAB || isFaqCatAD || isFaqCatAE) score -= 200;
     }
 
     if (hasCatDIntent) {
       if (isFaqCatD) score += 350;
-      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatE || isFaqCatAB || isFaqCatAD) score -= 200;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatE || isFaqCatAB || isFaqCatAD || isFaqCatAE) score -= 200;
+    }
+
+    if (hasCatEIntent) {
+      if (isFaqCatE) score += 350;
+      else if (isFaqCatA || isFaqCatB || isFaqCatC || isFaqCatD || isFaqCatAB || isFaqCatAD || isFaqCatAE) score -= 200;
     }
 
     if (hasCatEIntent) {
@@ -644,6 +674,7 @@ NUNCA diga que é robô ou IA.
 
 export function getTopicTitle(faq: FAQ): string {
   const q = faq.question.toLowerCase();
+  if (q.includes('ae') || q.includes('a/e')) return 'Categoria AE (Moto e Carreta)';
   if (q.includes('ad') || q.includes('a/d')) return 'Categoria AD (Moto e Ônibus/Van)';
   if (q.includes('ab')) return 'Categoria AB (Carro e Moto)';
   if (q.includes('categoria a') || q.includes('cnh a')) return 'Categoria A (Moto)';
