@@ -268,7 +268,8 @@ export async function generateAIWhatsAppResponse(
     /\b(categoria\s+ab|cnh\s+ab|cat\s+ab|cat\.\s*ab|ab|carro\s+e\s+moto|moto\s+e\s+carro|duas\s+e\s+quatro\s+rodas)\b/i.test(normalizedInput);
 
   const hasCatADIntent =
-    /\b(categoria\s+ad|cnh\s+ad|cat\s+ad|cat\.\s*ad|letra\s+ad|carteira\s+ad|habilitacao\s+ad|ad|a\/d|a\s+e\s+d|moto\s+e\s+onibus|onibus\s+e\s+moto|moto\s+e\s+van|van\s+e\s+moto)\b/i.test(normalizedInput);
+    /\b(categoria\s+ad|cnh\s+ad|cat\s+ad|cat\.\s*ad|letra\s+ad|carteira\s+ad|habilitacao\s+ad|ad|a\/d|a\s+e\s+d|moto\s+e\s+onibus|onibus\s+e\s+moto|moto\s+e\s+van|van\s+e\s+moto)\b/i.test(normalizedInput) ||
+    (/\b(moto|motocicleta)\b/i.test(normalizedInput) && /\b(onibus|van)\b/i.test(normalizedInput));
 
   const hasCatAIntent =
     !hasCatABIntent &&
