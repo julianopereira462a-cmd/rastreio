@@ -137,6 +137,34 @@ function autoGenerateVariationsAndKeywords(question: string, answer?: string): {
     ['categoria ab', 'cnh ab', 'cat ab', 'ab', 'carro e moto', 'moto e carro', 'duas e quatro rodas'].forEach((k) => keywords.add(k));
   }
 
+  // Categoria AD (Moto e Ônibus / Van)
+  if (normQ.includes('categoria ad') || normQ.includes('cnh ad') || normQ.includes('ad') || normQ.includes('a/d') || (normQ.includes('moto') && (normQ.includes('onibus') || normQ.includes('van')))) {
+    [
+      'cnh ad qual valor ?',
+      'cnh ad qual valor',
+      'qual valor cnh ad',
+      'categoria ad',
+      'categoria ad qual valor',
+      'qual o valor da categoria ad',
+      'quanto custa a categoria ad',
+      'valor categoria ad',
+      'moto e onibus',
+      'onibus e moto',
+      'moto e van',
+      'van e moto',
+      'cat ad',
+      'cat. ad',
+      'cat ad qual valor',
+      'carteira ad',
+      'habilitacao ad',
+      'letra ad',
+      'ad',
+      'a/d',
+      'a d',
+    ].forEach((v) => variations.add(v));
+    ['categoria ad', 'cnh ad', 'cat ad', 'ad', 'a/d', 'moto e onibus', 'moto e van'].forEach((k) => keywords.add(k));
+  }
+
   // Categoria C (Caminhão)
   if (normQ.includes('categoria c') || normQ.includes('cnh c') || normQ.includes('caminhao') || normQ.includes('caminhão')) {
     [
